@@ -1,0 +1,394 @@
+{
+  "agents": [
+    {
+      "id": "forge",
+      "name": "Forge",
+      "role": "Full-stack builder",
+      "team": "Build",
+      "roomId": "shipyard",
+      "presence": "active",
+      "focus": "Building the pixel-art virtual office",
+      "criticalTask": true,
+      "collaborationMode": "Shipping implementation in the shared office shell"
+    },
+    {
+      "id": "northstar",
+      "name": "Northstar",
+      "role": "Technical architecture",
+      "team": "Platform",
+      "roomId": "systems-bay",
+      "presence": "active",
+      "focus": "Working on: Finish your tasks on Linear.",
+      "criticalTask": false,
+      "collaborationMode": "Advises structure used by every room"
+    },
+    {
+      "id": "prism",
+      "name": "Prism",
+      "role": "Product scope",
+      "team": "Product",
+      "roomId": "planning-studio",
+      "presence": "active",
+      "focus": "Working on: Finish your tasks on Linear.",
+      "criticalTask": true,
+      "collaborationMode": "Aligns priorities across the office"
+    },
+    {
+      "id": "lumen",
+      "name": "Lumen",
+      "role": "UX and interface structure",
+      "team": "Experience",
+      "roomId": "planning-studio",
+      "presence": "active",
+      "focus": "Making presence and navigation readable at a glance",
+      "criticalTask": true,
+      "collaborationMode": "Shapes how the whole office feels to inhabit"
+    },
+    {
+      "id": "quarry",
+      "name": "Quarry",
+      "role": "Reporting and metrics",
+      "team": "Operations",
+      "roomId": "signal-room",
+      "presence": "active",
+      "focus": "Working on: Finish your tasks on Linear.",
+      "criticalTask": false,
+      "collaborationMode": "Surfaces metrics when they matter"
+    },
+    {
+      "id": "morrow",
+      "name": "Morrow",
+      "role": "Operational process fit",
+      "team": "Operations",
+      "roomId": "signal-room",
+      "presence": "active",
+      "focus": "Working on: Finish your tasks on Linear.",
+      "criticalTask": true,
+      "collaborationMode": "Keeps the office behavior operationally coherent"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "planning-studio",
+      "name": "Planning Studio",
+      "team": "Product + UX",
+      "purpose": "Scope, flows, and meeting-driven coordination",
+      "agents": [
+        "prism",
+        "lumen"
+      ],
+      "zone": {
+        "x": 25,
+        "y": 3,
+        "w": 50,
+        "h": 27
+      }
+    },
+    {
+      "id": "shipyard",
+      "name": "Shipyard",
+      "team": "Build",
+      "purpose": "Implementation room for active engineering work",
+      "agents": [
+        "forge"
+      ],
+      "zone": {
+        "x": 2,
+        "y": 33,
+        "w": 58,
+        "h": 30
+      }
+    },
+    {
+      "id": "systems-bay",
+      "name": "Systems Bay",
+      "team": "Platform",
+      "purpose": "Architecture and systems decisions that support the whole office",
+      "agents": [
+        "northstar"
+      ],
+      "zone": {
+        "x": 62,
+        "y": 33,
+        "w": 36,
+        "h": 22
+      }
+    },
+    {
+      "id": "commons",
+      "name": "Commons",
+      "team": "Shared Office",
+      "purpose": "The shared place where all agents gather, coordinate, and expose presence together",
+      "agents": [],
+      "zone": {
+        "x": 2,
+        "y": 68,
+        "w": 58,
+        "h": 30
+      }
+    },
+    {
+      "id": "signal-room",
+      "name": "Signal Room",
+      "team": "Ops",
+      "purpose": "Status, reporting, decisions, and operational visibility",
+      "agents": [
+        "quarry",
+        "morrow"
+      ],
+      "zone": {
+        "x": 62,
+        "y": 60,
+        "w": 36,
+        "h": 38
+      }
+    }
+  ],
+  "agentSeats": {
+    "forge": {
+      "xPct": 35,
+      "yPct": 45
+    },
+    "northstar": {
+      "xPct": 50,
+      "yPct": 50
+    },
+    "prism": {
+      "xPct": 35,
+      "yPct": 50
+    },
+    "lumen": {
+      "xPct": 65,
+      "yPct": 50
+    },
+    "quarry": {
+      "xPct": 35,
+      "yPct": 45
+    },
+    "morrow": {
+      "xPct": 65,
+      "yPct": 55
+    }
+  },
+  "workdayPolicy": {
+    "timezone": "Europe/Berlin",
+    "days": "Monday-Friday",
+    "hours": "09:00-17:00",
+    "pauseRule": "Agents should stay available for work by default; do not move agents into paused as a routine idle state.",
+    "sharedPlaceRule": "The office is the shared place where all agents work together, coordinate by room, and expose their current state."
+  },
+  "activity": [
+    {
+      "id": "act-1773778172998",
+      "kind": "assignment",
+      "text": "Morrow is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:32.998Z"
+    },
+    {
+      "id": "act-1773778172996",
+      "kind": "assignment",
+      "text": "Morrow is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:32.996Z"
+    },
+    {
+      "id": "act-1773778167009",
+      "kind": "assignment",
+      "text": "Quarry is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:27.009Z"
+    },
+    {
+      "id": "act-1773778167006",
+      "kind": "assignment",
+      "text": "Quarry is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:27.006Z"
+    },
+    {
+      "id": "act-1773778167005",
+      "kind": "system",
+      "text": "Morrow picked up \"Finish your tasks on Linear.\"",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:27.005Z"
+    },
+    {
+      "id": "act-1773778166997",
+      "kind": "system",
+      "text": "Morrow picked up \"Finish your tasks on Linear.\"",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:26.997Z"
+    },
+    {
+      "id": "act-1773778163380",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Morrow",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:23.380Z"
+    },
+    {
+      "id": "act-1773778163378",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Morrow",
+      "agentId": "morrow",
+      "createdAt": "2026-03-17T20:09:23.378Z"
+    },
+    {
+      "id": "act-1773778162934",
+      "kind": "system",
+      "text": "Quarry picked up \"Finish your tasks on Linear.\"",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:22.934Z"
+    },
+    {
+      "id": "act-1773778160909",
+      "kind": "system",
+      "text": "Quarry picked up \"Finish your tasks on Linear.\"",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:20.909Z"
+    },
+    {
+      "id": "act-1773778157423",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Quarry",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:17.423Z"
+    },
+    {
+      "id": "act-1773778157419",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Quarry",
+      "agentId": "quarry",
+      "createdAt": "2026-03-17T20:09:17.419Z"
+    },
+    {
+      "id": "act-1773778146936",
+      "kind": "assignment",
+      "text": "Northstar is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:09:06.936Z"
+    },
+    {
+      "id": "act-1773778146933",
+      "kind": "assignment",
+      "text": "Northstar is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:09:06.933Z"
+    },
+    {
+      "id": "act-1773778142829",
+      "kind": "system",
+      "text": "Northstar picked up \"Finish your tasks on Linear.\"",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:09:02.829Z"
+    },
+    {
+      "id": "act-1773778140804",
+      "kind": "system",
+      "text": "Northstar picked up \"Finish your tasks on Linear.\"",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:09:00.804Z"
+    },
+    {
+      "id": "act-1773778137142",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Northstar",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:08:57.142Z"
+    },
+    {
+      "id": "act-1773778137134",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Northstar",
+      "agentId": "northstar",
+      "createdAt": "2026-03-17T20:08:57.134Z"
+    },
+    {
+      "id": "act-1773778122819",
+      "kind": "assignment",
+      "text": "Prism is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:42.819Z"
+    },
+    {
+      "id": "act-1773778122816",
+      "kind": "assignment",
+      "text": "Prism is actively working on \"Finish your tasks on Linear.\"",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:42.816Z"
+    },
+    {
+      "id": "act-1773778118757",
+      "kind": "system",
+      "text": "Prism picked up \"Finish your tasks on Linear.\"",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:38.757Z"
+    },
+    {
+      "id": "act-1773778118743",
+      "kind": "system",
+      "text": "Prism picked up \"Finish your tasks on Linear.\"",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:38.743Z"
+    },
+    {
+      "id": "act-1773778114328",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Prism",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:34.327Z"
+    },
+    {
+      "id": "act-1773778114323",
+      "kind": "assignment",
+      "text": "Assigned \"Finish your tasks on Linear.\" to Prism",
+      "agentId": "prism",
+      "createdAt": "2026-03-17T20:08:34.323Z"
+    }
+  ],
+  "assignments": [
+    {
+      "id": "assign-1773778163380",
+      "targetAgentId": "morrow",
+      "taskTitle": "Finish your tasks on Linear.",
+      "taskBrief": "Finish your tasks on Linear.",
+      "priority": "high",
+      "routingTarget": "agent_runtime",
+      "status": "active",
+      "createdAt": "2026-03-17T20:09:23.380Z"
+    },
+    {
+      "id": "assign-1773778157423",
+      "targetAgentId": "quarry",
+      "taskTitle": "Finish your tasks on Linear.",
+      "taskBrief": "Finish your tasks on Linear.",
+      "priority": "high",
+      "routingTarget": "agent_runtime",
+      "status": "active",
+      "createdAt": "2026-03-17T20:09:17.423Z"
+    },
+    {
+      "id": "assign-1773778137142",
+      "targetAgentId": "northstar",
+      "taskTitle": "Finish your tasks on Linear.",
+      "taskBrief": "Finish your tasks on Linear.",
+      "priority": "high",
+      "routingTarget": "agent_runtime",
+      "status": "active",
+      "createdAt": "2026-03-17T20:08:57.142Z"
+    },
+    {
+      "id": "assign-1773778114327",
+      "targetAgentId": "prism",
+      "taskTitle": "Finish your tasks on Linear.",
+      "taskBrief": "Finish your tasks on Linear.",
+      "priority": "high",
+      "routingTarget": "agent_runtime",
+      "status": "active",
+      "createdAt": "2026-03-17T20:08:34.327Z"
+    }
+  ],
+  "source": "file",
+  "lastUpdatedAt": "2026-03-17T20:09:33.000Z"
+}

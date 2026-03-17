@@ -1,0 +1,233 @@
+import { defineConfig, type Plugin } from 'vite'
+import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
+import path from 'node:path'
+import { execFile } from 'node:child_process'
+
+const STATE_FILE = path.resolve(__dirname, 'state/office-snapshot.json')
+const LINEAR_BRIDGE = '/Users/fwartner/.openclaw/workspace/scripts/create_linear_task_and_dispatch.py'
+
+const MAX_BODY_SIZE = 1_048_576 // 1MB
+const VALID_PRESENCE = ['off_hours', 'available', 'active', 'in_meeting', 'paused', 'blocked']
+const AGENT_PATCH_FIELDS = ['presence', 'focus', 'roomId', 'criticalTask', 'collaborationMode']
+
+function readBody(req: import('http').IncomingMessage, limit: number = MAX_BODY_SIZE): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    let size = 0
+    const timeout = setTimeout(() => reject(new Error('Request timeout')), 10_000)
+    req.on('data', (chunk: Buffer | string) => {
+      size += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
+      if (size > limit) { reject(new Error('Body too large')); req.destroy(); return }
+      body += chunk
+    })
+    req.on('end', () => { clearTimeout(timeout); resolve(body) })
+    req.on('error', (e) => { clearTimeout(timeout); reject(e) })
+  })
+}
+
+function sanitizePatch(raw: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {}
+  for (const key of AGENT_PATCH_FIELDS) {
+    if (key in raw) clean[key] = raw[key]
+  }
+  return clean
+}
+
+function runLinearBridge(input: {
+  targetAgentId: string
+  taskTitle: string
+  taskBrief?: string
+  priority: string
+  origin?: string
+}): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [
+      LINEAR_BRIDGE,
+      '--agent', String(input.targetAgentId),
+      '--title', String(input.taskTitle),
+      '--brief', String(input.taskBrief ?? ''),
+      '--priority', String(input.priority),
+      '--origin', String(input.origin ?? 'office_ui'),
+    ], { timeout: 180_000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message))
+        return
+      }
+      try {
+        resolve(JSON.parse(stdout || '{}'))
+      } catch {
+        resolve({ ok: true, raw: stdout })
+      }
+    })
+  })
+}
+
+function officeApiPlugin(): Plugin {
+  return {
+    name: 'office-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        // GET /api/office/snapshot — return current state file
+        if (req.method === 'GET' && req.url === '/api/office/snapshot') {
+          try {
+            const data = fs.readFileSync(STATE_FILE, 'utf-8')
+            res.setHeader('Content-Type', 'application/json')
+            res.end(data)
+          } catch {
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: 'State file not found' }))
+          }
+          return
+        }
+
+        // PATCH /api/office/agent/:id — update a single agent's fields
+        const agentMatch = req.url?.match(/^\/api\/office\/agent\/([a-z0-9-]+)$/)
+        if (req.method === 'PATCH' && agentMatch) {
+          try {
+            const raw = JSON.parse(await readBody(req))
+            if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: 'Body must be a JSON object' }))
+              return
+            }
+            const patch = sanitizePatch(raw)
+            if (Object.keys(patch).length === 0) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: 'No valid fields to update' }))
+              return
+            }
+            if ('presence' in patch && !VALID_PRESENCE.includes(patch.presence as string)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: `Invalid presence value. Must be one of: ${VALID_PRESENCE.join(', ')}` }))
+              return
+            }
+            const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+            const agent = state.agents.find((a: { id: string }) => a.id === agentMatch[1])
+            if (!agent) {
+              res.statusCode = 404
+              res.end(JSON.stringify({ error: 'Agent not found' }))
+              return
+            }
+            for (const [k, v] of Object.entries(patch)) agent[k] = v
+            state.lastUpdatedAt = new Date().toISOString()
+            fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, agent }))
+          } catch (err) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: String(err) }))
+          }
+          return
+        }
+
+        // PATCH /api/office/assignment/:id — update assignment status
+        const assignMatch = req.url?.match(/^\/api\/office\/assignment\/([a-z0-9-]+)$/)
+        if (req.method === 'PATCH' && assignMatch) {
+          try {
+            const raw = JSON.parse(await readBody(req))
+            if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: 'Body must be a JSON object' }))
+              return
+            }
+            const validStatuses = ['queued', 'routed', 'active']
+            if (!raw.status || !validStatuses.includes(raw.status as string)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }))
+              return
+            }
+            const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+            if (!state.assignments) state.assignments = []
+            const assignment = state.assignments.find((a: { id: string }) => a.id === assignMatch[1])
+            if (!assignment) {
+              res.statusCode = 404
+              res.end(JSON.stringify({ error: 'Assignment not found' }))
+              return
+            }
+            assignment.status = raw.status
+            state.lastUpdatedAt = new Date().toISOString()
+            fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, assignment }))
+          } catch (err) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: String(err) }))
+          }
+          return
+        }
+
+        // POST /api/office/assign — queue an assignment
+        if (req.method === 'POST' && req.url === '/api/office/assign') {
+          try {
+            const input = JSON.parse(await readBody(req))
+            if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: 'Body must be a JSON object' }))
+              return
+            }
+            const missing = ['targetAgentId', 'taskTitle', 'priority', 'routingTarget'].filter(f => !input[f])
+            if (missing.length > 0) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: `Missing required fields: ${missing.join(', ')}` }))
+              return
+            }
+            const result = await runLinearBridge({
+              targetAgentId: String(input.targetAgentId),
+              taskTitle: String(input.taskTitle),
+              taskBrief: input.taskBrief ? String(input.taskBrief) : '',
+              priority: String(input.priority),
+              origin: 'office_ui'
+            })
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, result }))
+          } catch (err) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: String(err) }))
+          }
+          return
+        }
+
+        // POST /api/office/activity — push an activity entry
+        if (req.method === 'POST' && req.url === '/api/office/activity') {
+          try {
+            const entry = JSON.parse(await readBody(req))
+            if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+              res.statusCode = 400
+              res.end(JSON.stringify({ error: 'Body must be a JSON object' }))
+              return
+            }
+            const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+            if (!state.activity) state.activity = []
+            state.activity.unshift({
+              id: `act-${Date.now()}`,
+              kind: String(entry.kind ?? 'system'),
+              text: String(entry.text ?? ''),
+              agentId: entry.agentId ? String(entry.agentId) : undefined,
+              createdAt: new Date().toISOString()
+            })
+            state.activity = state.activity.slice(0, 100)
+            state.lastUpdatedAt = new Date().toISOString()
+            fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true }))
+          } catch (err) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: String(err) }))
+          }
+          return
+        }
+
+        next()
+      })
+    }
+  }
+}
+
+export default defineConfig({
+  plugins: [react(), officeApiPlugin()],
+  server: {
+    host: '0.0.0.0',
+    port: 4173
+  }
+})
