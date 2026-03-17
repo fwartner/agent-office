@@ -1,0 +1,14 @@
+Donarg Office Tileset License Agreement
+
+You are allowed to:
+1. Edit and use this tileset for commercial and non-commercial projects.
+
+You are not allowed to:
+2. Resell and distribute this tileset to others (even if the tileset is edited).
+3. Use this tileset for web3, NFT, crypto, or blockchain projects.
+4. Use this tileset to train AI/machine learning.
+
+Optional:
+1. Credit is not required but appreciated (Donarg).
+
+Any violation of this agreement will result in the termination of the license. 
