@@ -5,8 +5,31 @@ import { useOffice, type AgentCreateInput } from './office-provider'
 export function WelcomeOnboarding() {
   const { createAgent, rooms } = useOffice()
   const nameRef = useRef<HTMLInputElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { nameRef.current?.focus() }, [])
+
+  // Focus trap: keep Tab/Shift+Tab inside the dialog
+  useEffect(() => {
+    const overlay = overlayRef.current
+    if (!overlay) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return
+      const focusable = overlay!.querySelectorAll<HTMLElement>(
+        'input, select, textarea, button, [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus() }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus() }
+      }
+    }
+    overlay.addEventListener('keydown', handleKeyDown)
+    return () => overlay.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -27,7 +50,7 @@ export function WelcomeOnboarding() {
   }
 
   return (
-    <div className="welcome-overlay" role="dialog" aria-label="Welcome to Clawd Office">
+    <div ref={overlayRef} className="welcome-overlay" role="dialog" aria-label="Welcome to Clawd Office">
       <div className="welcome-card">
         <h2 className="welcome-title">Welcome to Clawd Office</h2>
         <p className="welcome-subtitle">Your office is empty. Create your first agent to get started.</p>

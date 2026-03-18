@@ -154,8 +154,9 @@ button { font: inherit; }
   display: flex; flex-direction: column;
   transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   max-height: 90vh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-.bottom-sheet.snap-collapsed { height: 48px; }
+.bottom-sheet.snap-collapsed { height: calc(48px + env(safe-area-inset-bottom, 0px)); }
 .bottom-sheet.snap-half { height: 45vh; }
 .bottom-sheet.snap-full { height: 90vh; }
 .bottom-sheet.dragging { transition: none; }
@@ -181,7 +182,7 @@ button { font: inherit; }
 .presence-summary { border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px; }
 .presence-grid { padding: 0 14px; display: flex; flex-direction: column; gap: 6px; }
 .presence-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.presence-dot { width: 8px; height: 8px; border-radius: 50%; }
+.presence-dot { width: 12px; height: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #000; }
 .presence-name { flex: 1; }
 .presence-count { color: var(--text2); font-size: 11px; }
 
@@ -207,7 +208,7 @@ button { font: inherit; }
 .roster-card:hover { background: #1e2536; }
 .roster-card.active { border-color: rgba(149,216,255,0.4); background: #1c2434; }
 .roster-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.roster-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.roster-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #000; }
 .roster-head strong { flex: 1; font-size: 12px; }
 .roster-state { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
 .roster-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text2); margin-top: 3px; flex-wrap: wrap; }
@@ -219,10 +220,10 @@ button { font: inherit; }
   display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px;
   border-left: 2px solid rgba(255,255,255,0.06); font-size: 12px;
 }
-.feed-assignment { border-left-color: #78f7b544; }
-.feed-presence { border-left-color: #95d8ff44; }
-.feed-decision { border-left-color: #c39bff44; }
-.feed-system { border-left-color: #ffd47944; }
+.feed-assignment { border-left-color: var(--feed-color-assignment); }
+.feed-presence { border-left-color: var(--feed-color-presence); }
+.feed-decision { border-left-color: var(--feed-color-decision); }
+.feed-system { border-left-color: var(--feed-color-system); }
 .feed-icon { font-size: 10px; color: var(--text2); flex-shrink: 0; padding-top: 2px; }
 .feed-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .feed-text { line-height: 1.4; }
@@ -528,6 +529,61 @@ button:focus:not(:focus-visible) { outline: none; }
 .agent-tasks-section { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .task-inline { padding: 6px 8px; }
 
+/* ── Feed color variables ─────────────────────────── */
+:root {
+  --feed-color-assignment: #78f7b544;
+  --feed-color-presence: #95d8ff44;
+  --feed-color-decision: #c39bff44;
+  --feed-color-system: #ffd47944;
+}
+
+/* ── Sprite badge presence shapes ─────────────────── */
+.sprite-badge.presence-active { border-radius: 2px; }
+.sprite-badge.presence-in_meeting { border-radius: 2px; }
+.sprite-badge.presence-blocked { border-radius: 2px; transform: rotate(45deg); }
+
+/* ── Skeleton loader ─────────────────────────────── */
+.feed-skeleton {
+  height: 40px; border-radius: 4px;
+  background: linear-gradient(90deg, #1c2230 25%, #242b3a 50%, #1c2230 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── CSS containment ─────────────────────────────── */
+.map-container { contain: layout; }
+.bottom-sheet { contain: layout; }
+.agent-sprite { contain: layout style; }
+
+/* ── Reduced motion ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .agent-sprite.idle { animation: none; }
+  .sprite-pulse { animation: none; opacity: 0.5; }
+  .speech-bubble { animation: none; }
+  .bottom-sheet { transition: none; }
+  .room-overlay, .agent-sprite { transition: none; }
+  .roster-card, .side-tab, .assign-btn, .agent-edit-btn, .agent-delete-btn { transition: none; }
+  .feed-skeleton { animation: none; }
+}
+
+/* ── Forced colors (Windows High Contrast) ───────── */
+@media (forced-colors: active) {
+  .roster-dot, .presence-dot, .sprite-badge { border: 2px solid ButtonText; }
+  .office-status { border: 1px solid ButtonText; }
+  .bottom-sheet { border-top-color: ButtonText; }
+  .detail-card, .task-card { border-color: ButtonText; }
+  :focus-visible { outline-color: Highlight; }
+}
+
+/* ── Smooth scroll ───────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .map-scroll, .agent-roster, .activity-feed, .tasks-panel, .agent-livefeed-list { scroll-behavior: smooth; }
+}
+
 /* ── Responsive ───────────────────────────────────── */
 
 /* Phone landscape */
@@ -553,6 +609,11 @@ button:focus:not(:focus-visible) { outline: none; }
 .side-tab { min-height: 44px; }
 .assign-close { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
 .roster-card { min-height: 44px; }
+
+/* Tablet */
+@media (min-width: 768px) {
+  .bottom-sheet { left: 15%; right: 15%; border-radius: 12px 12px 0 0; }
+}
 
 /* Prevent horizontal overflow */
 body { overflow-x: hidden; }

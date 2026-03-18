@@ -18,6 +18,15 @@ const presenceLabels: Record<PresenceState, string> = {
   blocked: 'Blocked'
 }
 
+const presenceIcons: Record<PresenceState, string> = {
+  off_hours: '\u263E',
+  available: '\u25CF',
+  active: '\u25B6',
+  in_meeting: '\u25A0',
+  paused: '\u2016',
+  blocked: '\u2715',
+}
+
 const activityIcons: Record<string, string> = {
   assignment: '\u25B6',
   presence: '\u25CF',
@@ -30,6 +39,7 @@ function useSpriteFrame(frameCount: number, fps: number = 6): number {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
     if (frameCount <= 1) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const interval = setInterval(() => {
       setFrame(f => (f + 1) % frameCount)
     }, 1000 / fps)
@@ -118,7 +128,9 @@ function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHove
       onMouseLeave={() => onHover(false)}
     >
       {showBubble && (
-        <SpeechBubble text={agent.focus} color={color} />
+        <div aria-hidden="true">
+          <SpeechBubble text={agent.focus} color={color} />
+        </div>
       )}
       <div className="sprite-shadow" />
       {spriteUrl && spriteSet && animData && !spriteFailed ? (
@@ -143,7 +155,7 @@ function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHove
           <span className="sprite-initial">{agent.name[0]}</span>
         </div>
       )}
-      <div className="sprite-badge" style={{ background: color }} />
+      <div className={`sprite-badge presence-${agent.effectivePresence}`} style={{ background: color }} />
       <div className="sprite-label">{agent.name}</div>
       {(agent.effectivePresence === 'active' || agent.effectivePresence === 'in_meeting') && (
         <div className="sprite-pulse" style={{ borderColor: color }} />
@@ -245,7 +257,7 @@ function RoomDetailCard({ room, agents, presenceColors, onClose }: {
         <div className="room-detail-agents">
           {roomAgents.map(a => (
             <div key={a.id} className="room-agent-row">
-              <span className="roster-dot" style={{ background: presenceColors[a.effectivePresence] }} />
+              <span className="roster-dot" aria-hidden="true" style={{ background: presenceColors[a.effectivePresence] }}>{presenceIcons[a.effectivePresence]}</span>
               <span>{a.name}</span>
               <span className="roster-state" style={{ color: presenceColors[a.effectivePresence] }}>
                 {presenceLabels[a.effectivePresence]}
@@ -707,7 +719,7 @@ export function App() {
                 if (count === 0) return null
                 return (
                   <div key={state} className="presence-row">
-                    <span className="presence-dot" aria-hidden="true" style={{ background: presenceColors[state] }} />
+                    <span className="presence-dot" aria-hidden="true" style={{ background: presenceColors[state] }}>{presenceIcons[state]}</span>
                     <span className="presence-name">{presenceLabels[state]}</span>
                     <span className="presence-count">{count}</span>
                   </div>
@@ -742,7 +754,7 @@ export function App() {
                     onClick={() => handleAgentClick(agent.id)}
                   >
                     <div className="roster-head">
-                      <span className="roster-dot" style={{ background: color }} />
+                      <span className="roster-dot" aria-hidden="true" style={{ background: color }}>{presenceIcons[agent.effectivePresence]}</span>
                       <strong>{agent.name}</strong>
                       <span className="roster-state" style={{ color }}>{presenceLabels[agent.effectivePresence]}</span>
                     </div>
@@ -759,7 +771,15 @@ export function App() {
           {/* Activity feed tab */}
           {sideTab === 'activity' && (
             <div className="activity-feed" role="tabpanel" aria-live="polite">
-              {activity.length === 0 && <p className="feed-empty">No activity yet</p>}
+              {activity.length === 0 && (dataSource === 'seed' ? (
+                <>
+                  <div className="feed-skeleton" />
+                  <div className="feed-skeleton" />
+                  <div className="feed-skeleton" />
+                </>
+              ) : (
+                <p className="feed-empty">No activity yet</p>
+              ))}
               {activity.map(item => (
                 <div key={item.id} className={`feed-entry feed-${item.kind}`}>
                   <span className="feed-icon" aria-hidden="true">{activityIcons[item.kind] ?? '\u25CB'}</span>
