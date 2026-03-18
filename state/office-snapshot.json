@@ -1,17 +1,5 @@
 {
-  "agents": [
-    {
-      "id": "polly",
-      "name": "Polly",
-      "role": "CEO",
-      "team": "Management",
-      "roomId": "signal-room",
-      "presence": "active",
-      "focus": "Working on: Contact my Company",
-      "criticalTask": true,
-      "collaborationMode": ""
-    }
-  ],
+  "agents": [],
   "rooms": [
     {
       "id": "planning-studio",
@@ -79,12 +67,7 @@
       }
     }
   ],
-  "agentSeats": {
-    "polly": {
-      "xPct": 50,
-      "yPct": 50
-    }
-  },
+  "agentSeats": {},
   "workdayPolicy": {
     "timezone": "Europe/Berlin",
     "days": "Monday-Friday",
@@ -93,6 +76,12 @@
     "sharedPlaceRule": "The office is the shared place where all agents work together, coordinate by room, and expose their current state."
   },
   "activity": [
+    {
+      "id": "act-1773829447469",
+      "kind": "system",
+      "text": "Agent Polly deleted",
+      "createdAt": "2026-03-18T10:24:07.469Z"
+    },
     {
       "id": "act-1773827577680",
       "kind": "assignment",
@@ -183,28 +172,7 @@
       "createdAt": "2026-03-18T10:00:00.000Z"
     }
   ],
-  "assignments": [
-    {
-      "id": "assignment-1773827338201",
-      "targetAgentId": "polly",
-      "taskTitle": "Find everything about my company",
-      "taskBrief": "My company is pixel & process in lübeck",
-      "priority": "medium",
-      "routingTarget": "agent_runtime",
-      "status": "active",
-      "createdAt": "2026-03-18T09:48:58.201Z"
-    },
-    {
-      "id": "assignment-1773827567935",
-      "targetAgentId": "polly",
-      "taskTitle": "Contact my Company",
-      "taskBrief": "Use the contactform on pixelandprocess.de and ask for help regarding a website development for an upcoming product. Think of a product of your choice.",
-      "priority": "high",
-      "routingTarget": "agent_runtime",
-      "status": "active",
-      "createdAt": "2026-03-18T09:52:47.935Z"
-    }
-  ],
+  "assignments": [],
   "settings": {
     "officeName": "Clawd Office",
     "theme": {
@@ -219,5 +187,5 @@
     }
   },
   "source": "file",
-  "lastUpdatedAt": "2026-03-18T09:52:57.680Z"
+  "lastUpdatedAt": "2026-03-18T10:24:07.472Z"
 }
