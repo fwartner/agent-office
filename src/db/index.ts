@@ -27,7 +27,11 @@ export interface DbConnection {
 
 let _connection: DbConnection | null = null
 
-export async function getConnection(): Promise<DbConnection> {
+/**
+ * Get or create the database connection.
+ * @param dbPath Optional explicit SQLite path. Overrides DEFAULT_SQLITE_PATH but not DATABASE_URL for Postgres.
+ */
+export async function getConnection(dbPath?: string): Promise<DbConnection> {
   if (_connection) return _connection
 
   const databaseUrl = process.env.DATABASE_URL || ''
@@ -35,7 +39,9 @@ export async function getConnection(): Promise<DbConnection> {
   if (databaseUrl.startsWith('postgres://') || databaseUrl.startsWith('postgresql://')) {
     _connection = await connectPostgres(databaseUrl)
   } else {
-    _connection = await connectSqlite(databaseUrl || DEFAULT_SQLITE_PATH)
+    // Use: explicit dbPath > OFFICE_DB_PATH env > DATABASE_URL (non-postgres) > default
+    const sqlitePath = dbPath || process.env.OFFICE_DB_PATH || databaseUrl || DEFAULT_SQLITE_PATH
+    _connection = await connectSqlite(sqlitePath)
   }
 
   return _connection

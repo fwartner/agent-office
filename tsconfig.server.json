@@ -14,5 +14,5 @@
     "baseUrl": ".",
     "types": ["node"]
   },
-  "include": ["src/db", "src/server", "src/bot"]
+  "include": ["src/db", "src/server", "src/bot", "src/runtime"]
 }

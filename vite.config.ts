@@ -5,9 +5,11 @@ import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { registerAgent, unregisterAgent, dispatchTask, cancelTask, getAllAgentStatuses, startTaskQueue, shutdownAll, setProjectRoot } from './agent-runtime.mjs'
 
-setProjectRoot(__dirname)
-const STATE_FILE = path.resolve(__dirname, 'state/office-snapshot.json')
-const RESULTS_DIR = path.resolve(__dirname, 'state/results')
+setProjectRoot(process.env.PROJECT_ROOT || __dirname)
+const STATE_DIR = process.env.OFFICE_STATE_DIR || path.resolve(__dirname, 'state')
+const STATE_FILE = path.join(STATE_DIR, 'office-snapshot.json')
+const RESULTS_DIR = process.env.OFFICE_RESULTS_DIR || path.join(STATE_DIR, 'results')
+const SETTINGS_PATH = process.env.OFFICE_SETTINGS_PATH || path.join(STATE_DIR, 'settings.json')
 const MAX_BODY_SIZE = 1_048_576
 const startTime = Date.now()
 
@@ -62,7 +64,7 @@ function officeApiPlugin(): Plugin {
               const conn = await getConnection()
               await runMigrations(conn)
               await seedDatabase(conn)
-              apiCtx = serverMod.createDrizzleContext(conn.db, conn.schema, RESULTS_DIR)
+              apiCtx = serverMod.createDrizzleContext(conn.db, conn.schema, RESULTS_DIR, SETTINGS_PATH)
               console.log(`[dev] Using ${conn.dialect} database`)
             } catch (dbErr) {
               console.warn(`[dev] Drizzle init failed, using JSON file: ${(dbErr as Error).message}`)

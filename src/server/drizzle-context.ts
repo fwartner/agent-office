@@ -46,8 +46,9 @@ export function createDrizzleContext(
   db: DrizzleDb,
   schema: Schema,
   resultsDir: string,
+  settingsFilePath?: string,
 ): ApiContext {
-  const settingsPath = path.join(path.dirname(resultsDir), 'settings.json')
+  const settingsPath = settingsFilePath || path.join(path.dirname(resultsDir), 'settings.json')
 
   function now() { return new Date().toISOString() }
   function genId(prefix: string) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
@@ -97,6 +98,8 @@ export function createDrizzleContext(
           runtimeWorkingDir: a.runtimeWorkingDir || '',
           runtimeAllowedTools: a.runtimeAllowedTools || '',
           runtimeMode: a.runtimeMode || 'full',
+          runtimeProvider: a.runtimeProvider || 'claude-code',
+          runtimeModel: a.runtimeModel || '',
           external: !a.internalStaff,
         }
       })
@@ -174,6 +177,8 @@ export function createDrizzleContext(
         runtimeWorkingDir: input.runtimeWorkingDir ? String(input.runtimeWorkingDir) : null,
         runtimeAllowedTools: input.runtimeAllowedTools ? String(input.runtimeAllowedTools) : null,
         runtimeMode: input.runtimeMode ? String(input.runtimeMode) : 'full',
+        runtimeProvider: input.runtimeProvider ? String(input.runtimeProvider) : 'claude-code',
+        runtimeModel: input.runtimeModel ? String(input.runtimeModel) : null,
       })
       await db.insert(schema.officePresence).values({
         agentId: id,
@@ -205,6 +210,8 @@ export function createDrizzleContext(
       if (input.runtimeWorkingDir !== undefined) agentUpdates.runtimeWorkingDir = input.runtimeWorkingDir || null
       if (input.runtimeAllowedTools !== undefined) agentUpdates.runtimeAllowedTools = input.runtimeAllowedTools || null
       if (input.runtimeMode !== undefined) agentUpdates.runtimeMode = input.runtimeMode
+      if (input.runtimeProvider !== undefined) agentUpdates.runtimeProvider = input.runtimeProvider
+      if (input.runtimeModel !== undefined) agentUpdates.runtimeModel = input.runtimeModel || null
       await db.update(schema.officeAgents).set(agentUpdates).where(eq(schema.officeAgents.id, id))
       const presUpdates: Record<string, unknown> = { updatedAt: now() }
       if (input.presence) { presUpdates.presenceState = String(input.presence); presUpdates.effectivePresenceState = String(input.presence) }
@@ -230,6 +237,8 @@ export function createDrizzleContext(
       if (patch.runtimeWorkingDir !== undefined) agentUpdates.runtimeWorkingDir = patch.runtimeWorkingDir || null
       if (patch.runtimeAllowedTools !== undefined) agentUpdates.runtimeAllowedTools = patch.runtimeAllowedTools || null
       if (patch.runtimeMode !== undefined) agentUpdates.runtimeMode = patch.runtimeMode
+      if (patch.runtimeProvider !== undefined) agentUpdates.runtimeProvider = patch.runtimeProvider
+      if (patch.runtimeModel !== undefined) agentUpdates.runtimeModel = patch.runtimeModel || null
       if (Object.keys(agentUpdates).length > 1) {
         await db.update(schema.officeAgents).set(agentUpdates).where(eq(schema.officeAgents.id, id))
       }

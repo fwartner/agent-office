@@ -22,6 +22,8 @@ export interface AgentCard {
   runtimeWorkingDir?: string
   runtimeAllowedTools?: string
   runtimeMode?: string
+  runtimeProvider?: string
+  runtimeModel?: string
   /** Is this agent an external collaborator (not firm office staff)? */
   external?: boolean
 }

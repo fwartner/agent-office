@@ -9,6 +9,7 @@ export type OfficeEvent =
   | { type: 'agent.deleted'; agentId: string }
   | { type: 'agent.presence_changed'; agentId: string; from: string; to: string }
   | { type: 'task.created'; assignmentId: string; agentId: string; title: string }
+  | { type: 'task.queued'; assignmentId: string; agentId: string; title: string }
   | { type: 'task.completed'; assignmentId: string; agentId: string; title: string; result: string }
   | { type: 'task.failed'; assignmentId: string; agentId: string; title: string; error: string }
   | { type: 'decision.created'; decisionId: string; title: string }

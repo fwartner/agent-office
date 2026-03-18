@@ -18,6 +18,8 @@ export const officeAgents = sqliteTable('office_agents', {
   runtimeWorkingDir: text('runtime_working_dir'),
   runtimeAllowedTools: text('runtime_allowed_tools'), // JSON array stored as text
   runtimeMode: text('runtime_mode').default('full'), // 'readonly' | 'full'
+  runtimeProvider: text('runtime_provider').default('claude-code'), // 'claude-code' | 'openai' | 'ollama'
+  runtimeModel: text('runtime_model'), // model name for non-claude providers
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })
@@ -69,6 +71,9 @@ export const officeAssignments = sqliteTable('office_assignments', {
   result: text('result'),
   completedAt: text('completed_at'),
   durationMs: integer('duration_ms'),
+  dependsOn: text('depends_on'), // JSON array of assignment IDs
+  externalIssueId: text('external_issue_id'),
+  externalIssueUrl: text('external_issue_url'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })
@@ -118,8 +123,16 @@ export const officeWebhookLogs = sqliteTable('office_webhook_logs', {
 })
 
 export const officeIntegrations = sqliteTable('office_integrations', {
-  name: text('name').primaryKey(),  // 'slack', 'github', 'linear', 'telegram'
+  name: text('name').primaryKey(),  // 'slack', 'github', 'linear', 'telegram', 'discord', 'notion'
   config: text('config').notNull().default('{}'),  // JSON object stored as text
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+})
+
+export const officeAuditLog = sqliteTable('office_audit_log', {
+  id: text('id').primaryKey(),
+  action: text('action').notNull(),
+  source: text('source').notNull(), // 'api', 'bot', 'runtime', 'integration'
+  details: text('details'), // JSON object stored as text
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 })

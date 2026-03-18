@@ -1,10 +1,26 @@
 {
   "name": "agent-office",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Pixel-art virtual office for AI agent teams - live presence, room navigation, agent CRUD, and task assignment in a retro-styled shared workspace.",
   "type": "module",
   "license": "MIT",
   "author": "Florian Wartner <florian@wartner.io> (https://pixelandprocess.de)",
+  "bin": {
+    "office": "./bin/office.mjs"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "dist-server/",
+    "assets/readme/",
+    "drizzle/",
+    "agent-runtime.mjs",
+    "server.mjs",
+    "setup.mjs"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "setup": "node setup.mjs",
     "setup:force": "node setup.mjs --force",
@@ -21,7 +37,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@grammyjs/conversations": "^2.1.1",

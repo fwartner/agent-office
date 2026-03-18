@@ -197,6 +197,7 @@ export async function createAssignment(ctx: ApiContext, input: unknown): Promise
 
   const persisted = await ctx.createAssignment(o)
   emit({ type: 'task.created', assignmentId: persisted.id, agentId: String(o.targetAgentId), title: String(o.taskTitle) })
+  emit({ type: 'task.queued', assignmentId: persisted.id, agentId: String(o.targetAgentId), title: String(o.taskTitle) })
 
   if (ctx.dispatchToRuntime && ['agent_runtime', 'both'].includes(String(o.routingTarget))) {
     ctx.dispatchToRuntime(String(o.targetAgentId), {

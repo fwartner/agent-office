@@ -37,3 +37,4 @@ tmp/
 
 # Runtime state (DB, results, settings)
 state/
+.agent-office/

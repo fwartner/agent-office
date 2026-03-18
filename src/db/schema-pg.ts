@@ -18,6 +18,8 @@ export const officeAgents = pgTable('office_agents', {
   runtimeWorkingDir: text('runtime_working_dir'),
   runtimeAllowedTools: text('runtime_allowed_tools'), // JSON array stored as text
   runtimeMode: text('runtime_mode').default('full'), // 'readonly' | 'full'
+  runtimeProvider: text('runtime_provider').default('claude-code'), // 'claude-code' | 'openai' | 'ollama'
+  runtimeModel: text('runtime_model'), // model name for non-claude providers
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -69,6 +71,9 @@ export const officeAssignments = pgTable('office_assignments', {
   result: text('result'),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   durationMs: integer('duration_ms'),
+  dependsOn: text('depends_on'), // JSON array of assignment IDs
+  externalIssueId: text('external_issue_id'),
+  externalIssueUrl: text('external_issue_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -122,4 +127,12 @@ export const officeIntegrations = pgTable('office_integrations', {
   config: text('config').notNull().default('{}'),
   enabled: boolean('enabled').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const officeAuditLog = pgTable('office_audit_log', {
+  id: text('id').primaryKey(),
+  action: text('action').notNull(),
+  source: text('source').notNull(),
+  details: text('details'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

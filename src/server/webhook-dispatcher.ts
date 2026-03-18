@@ -45,11 +45,17 @@ async function deliverWebhook(
     }
   }
 
-  let statusCode = await attempt()
-  if (statusCode === 0) {
-    // Retry once after 5s
-    await new Promise(r => setTimeout(r, 5000))
+  // Exponential backoff: 4 attempts at 0s, 2s, 8s, 32s
+  const delays = [0, 2000, 8000, 32000]
+  let statusCode = 0
+  for (let i = 0; i < delays.length; i++) {
+    if (i > 0) {
+      console.log(`[webhook] Retry ${i}/${delays.length - 1} for ${wh.url} (waiting ${delays[i] / 1000}s)`)
+      await new Promise(r => setTimeout(r, delays[i]))
+    }
     statusCode = await attempt()
+    if (statusCode >= 200 && statusCode < 300) break
+    if (statusCode >= 400 && statusCode < 500) break // Don't retry client errors
   }
 
   // Log delivery

@@ -4,11 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Agent Office is a pixel-art virtual office for AI agent teams. Agents have live presence states, sit in themed rooms, and can be managed through a retro-styled UI or Telegram bot. Early development - APIs and features may change without notice.
+Agent Office is a pixel-art virtual office for AI agent teams. Globally installable CLI tool (`npm i -g agent-office && office`). Agents have live presence states, sit in themed rooms, support multi-LLM providers (Claude Code, OpenAI, Ollama), and can be managed through a retro-styled UI, Telegram bot, or CLI.
 
 ## Commands
 
 ```bash
+# CLI (global install)
+office                # Start server + open browser in current project dir
+office init           # Interactive setup wizard
+office status         # Show running state from PID file
+office agents         # List agents from DB
+office stop           # SIGTERM via PID file
+office --port 8080    # Override port
+office --no-open      # Skip browser open (Docker/CI)
+
+# Development
 npm run dev           # Start Vite dev server (http://localhost:4173)
 npm run build         # Build server + frontend (tsup + tsc + vite)
 npm run build:server  # Build server modules only (tsup → dist-server/)
@@ -28,13 +38,17 @@ Run a single test file: `npx vitest run src/__tests__/app.test.tsx`
 
 **Frontend:** React 18 + TypeScript 5.6 + Vite 5. Single-page app with pixel-art map, animated sprites, room navigation, agent CRUD forms, task assignment, and activity feed.
 
-**Backend:** Node.js server (`server.mjs` for production, Vite plugin in `vite.config.ts` for dev). Shared API layer in `src/server/`. Default storage: SQLite via Drizzle ORM (zero-config). Optional: PostgreSQL via `DATABASE_URL` env var. Legacy JSON file fallback (`state/office-snapshot.json`) still supported.
+**CLI:** `bin/office.mjs` - globally installable entry point. Resolves `process.cwd()` as project root, creates `.agent-office/` for state, auto-runs init on first use, manages PID file.
+
+**Backend:** Node.js server (`server.mjs` for production, Vite plugin in `vite.config.ts` for dev). Shared API layer in `src/server/`. Default storage: SQLite via Drizzle ORM (zero-config). Optional: PostgreSQL via `DATABASE_URL` env var. API key auth via `OFFICE_API_KEY`. Rate limiting (100 writes/min, 300 reads/min). CSP headers.
+
+**Runtime:** Multi-LLM provider support in `src/runtime/providers/` - Claude Code (default), OpenAI, Ollama. Event-driven task dispatch via `task.queued` events.
 
 **Telegram Bot:** Optional grammy-based bot activated by `TELEGRAM_BOT_TOKEN`. Full agent management via inline keyboards and conversation flows.
 
 **Data flow:** `OfficeProvider` (React context) polls `GET /api/office/snapshot` every 2-3 seconds. Mutations go through provider methods → POST/PATCH/DELETE endpoints → DB or state file → next poll picks up changes.
 
-**Event system:** `src/server/events.ts` - EventEmitter-based pub/sub. API routes emit events, adapters (webhook, Telegram, Slack, GitHub, Linear) subscribe.
+**Event system:** `src/server/events.ts` - EventEmitter-based pub/sub. API routes emit events, adapters (webhook, Telegram, Slack, GitHub, Linear, Discord, Notion) subscribe.
 
 ### Key Files
 
@@ -49,8 +63,12 @@ Run a single test file: `npx vitest run src/__tests__/app.test.tsx`
 | `src/server/validation.ts` | Shared validation constants and helpers |
 | `src/server/events.ts` | Event bus for office events |
 | `src/server/json-context.ts` | JSON file-backed ApiContext adapter |
-| `src/server/webhook-dispatcher.ts` | Webhook delivery with HMAC + retry |
-| `src/server/integrations/` | Slack, GitHub, Linear adapters |
+| `src/server/webhook-dispatcher.ts` | Webhook delivery with HMAC + exponential backoff |
+| `src/server/paths.ts` | Path resolution for CLI + server |
+| `src/server/integrations/` | Slack, GitHub, Linear, Discord, Notion adapters |
+| `src/runtime/providers/` | Multi-LLM providers (claude-code, openai, ollama) |
+| `src/runtime/types.ts` | Shared runtime provider interface |
+| `src/components/shared/CommandPalette.tsx` | Cmd+K command palette |
 | `src/db/schema.ts` | Drizzle ORM schema (SQLite) |
 | `src/db/schema-pg.ts` | Drizzle ORM schema (PostgreSQL) |
 | `src/db/index.ts` | DB connection factory |
@@ -62,9 +80,10 @@ Run a single test file: `npx vitest run src/__tests__/app.test.tsx`
 | `src/bot/callbacks.ts` | Button press handlers |
 | `src/bot/conversations.ts` | Multi-step flows (create agent, assign task) |
 | `src/bot/notifications.ts` | Push notifications to Telegram |
+| `bin/office.mjs` | CLI entry point (global install) |
 | `vite.config.ts` | Vite config + dev API plugin |
-| `server.mjs` | Production HTTP server |
-| `Dockerfile` | Multi-stage Docker build |
+| `server.mjs` | Production HTTP server (auth, rate limit, CSP) |
+| `Dockerfile` | Multi-stage Docker build (uses CLI entry) |
 | `docker-compose.yml` | Full stack compose |
 
 ### API Endpoints
@@ -96,7 +115,7 @@ Shared route handlers in `src/server/api-routes.ts`, used by both dev and prod:
 
 - Agent IDs: `/^[a-z0-9-]+$/` (kebab-case)
 - Presence enum: `off_hours, available, active, in_meeting, paused, blocked`
-- PATCH whitelist: `presence, focus, roomId, criticalTask, collaborationMode, xPct, yPct, systemPrompt`
+- PATCH whitelist: `presence, focus, roomId, criticalTask, collaborationMode, xPct, yPct, systemPrompt, runtimeMaxTurns, runtimeTimeoutSec, runtimeWorkingDir, runtimeAllowedTools, runtimeMode, runtimeProvider, runtimeModel`
 - String limits: name (100), role (200), title (200), brief (2000), focus (500), systemPrompt (5000), message (2000)
 - Body limit: 1MB
 

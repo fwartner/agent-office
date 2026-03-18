@@ -131,6 +131,15 @@ CREATE TABLE IF NOT EXISTS office_integrations (
   enabled INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS office_audit_log (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  source TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS office_audit_log_created_at_idx ON office_audit_log (created_at DESC);
 `
 
 /** SQLite ALTER TABLE additions - idempotent, silently ignores if column exists */
@@ -140,6 +149,14 @@ const SQLITE_ALTER = [
   'ALTER TABLE office_agents ADD COLUMN runtime_working_dir TEXT',
   'ALTER TABLE office_agents ADD COLUMN runtime_allowed_tools TEXT',
   "ALTER TABLE office_agents ADD COLUMN runtime_mode TEXT DEFAULT 'full'",
+  // Phase 2: Multi-LLM provider support
+  "ALTER TABLE office_agents ADD COLUMN runtime_provider TEXT DEFAULT 'claude-code'",
+  'ALTER TABLE office_agents ADD COLUMN runtime_model TEXT',
+  // Phase 2: Task dependencies
+  'ALTER TABLE office_assignments ADD COLUMN depends_on TEXT',
+  // Phase 3: External issue linking
+  'ALTER TABLE office_assignments ADD COLUMN external_issue_id TEXT',
+  'ALTER TABLE office_assignments ADD COLUMN external_issue_url TEXT',
 ]
 
 const POSTGRES_DDL = `
@@ -265,6 +282,15 @@ CREATE TABLE IF NOT EXISTS office_integrations (
   enabled BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS office_audit_log (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  source TEXT NOT NULL,
+  details TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS office_audit_log_created_at_idx ON office_audit_log (created_at DESC);
 `
 
 /** Postgres ALTER TABLE additions - idempotent, silently ignores if column exists */
@@ -274,6 +300,14 @@ const POSTGRES_ALTER = [
   'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_working_dir TEXT',
   'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_allowed_tools TEXT',
   "ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_mode TEXT DEFAULT 'full'",
+  // Phase 2: Multi-LLM provider support
+  "ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_provider TEXT DEFAULT 'claude-code'",
+  'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_model TEXT',
+  // Phase 2: Task dependencies
+  'ALTER TABLE office_assignments ADD COLUMN IF NOT EXISTS depends_on TEXT',
+  // Phase 3: External issue linking
+  'ALTER TABLE office_assignments ADD COLUMN IF NOT EXISTS external_issue_id TEXT',
+  'ALTER TABLE office_assignments ADD COLUMN IF NOT EXISTS external_issue_url TEXT',
 ]
 
 export async function runMigrations(conn: DbConnection): Promise<void> {

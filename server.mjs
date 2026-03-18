@@ -11,13 +11,16 @@ import { registerAgent, unregisterAgent, dispatchTask, cancelTask, getAllAgentSt
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.join(__dirname, 'dist')
-const STATE_FILE = path.join(__dirname, 'state/office-snapshot.json')
-const RESULTS_DIR = path.join(__dirname, 'state/results')
+// Support CLI-injected paths via env vars, fall back to legacy state/ dir
+const STATE_DIR = process.env.OFFICE_STATE_DIR || path.join(__dirname, 'state')
+const STATE_FILE = path.join(STATE_DIR, 'office-snapshot.json')
+const RESULTS_DIR = process.env.OFFICE_RESULTS_DIR || path.join(STATE_DIR, 'results')
+const SETTINGS_PATH = process.env.OFFICE_SETTINGS_PATH || path.join(STATE_DIR, 'settings.json')
 const PORT = Number(process.env.PORT || (process.argv.includes('--port') ? process.argv[process.argv.indexOf('--port') + 1] : 4173))
 const MAX_BODY_SIZE = 1_048_576 // 1MB
 const startTime = Date.now()
 
-setProjectRoot(__dirname)
+setProjectRoot(process.env.PROJECT_ROOT || __dirname)
 const ALLOWED_ROOTS = [DIST, path.join(__dirname, 'assets')]
 const MIME = {
   '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
@@ -30,6 +33,7 @@ const {
   routeRequest, createJsonContext, createDrizzleContext, initWebhookDispatcher,
   initSlack, initGitHub, githubWebhookHandler,
   initLinear, linearWebhookHandler,
+  initDiscord, initNotion,
   initSSE, addClient, removeClient, shutdownSSE, broadcastAgentOutput, broadcastSettingsChanged,
 } = await import('./dist-server/server/index.js')
 const { startBot, stopBot } = await import('./dist-server/bot/index.js')
@@ -43,7 +47,7 @@ try {
   const conn = await getConnection()
   await runMigrations(conn)
   await seedDatabase(conn)
-  apiCtx = createDrizzleContext(conn.db, conn.schema, RESULTS_DIR)
+  apiCtx = createDrizzleContext(conn.db, conn.schema, RESULTS_DIR, SETTINGS_PATH)
   console.log(`[db] Using ${conn.dialect} database`)
 } catch (err) {
   console.warn(`[db] Drizzle init failed, falling back to JSON file: ${err.message}`)
@@ -112,6 +116,8 @@ initWebhookDispatcher(apiCtx)
 initSlack(apiCtx)
 initGitHub(apiCtx)
 initLinear(apiCtx)
+initDiscord(apiCtx)
+initNotion(apiCtx)
 
 // Register inbound webhook handlers
 apiCtx.integrationWebhooks = {
@@ -158,16 +164,67 @@ function isSafePath(filePath) {
   return ALLOWED_ROOTS.some(root => resolved.startsWith(root + path.sep) || resolved === root)
 }
 
+// ── Rate limiting ────────────────────────────────────
+const rateLimitWindows = new Map()
+const RATE_LIMIT_WINDOW = 60_000 // 1 minute
+const RATE_LIMIT_READ = 300
+const RATE_LIMIT_WRITE = 100
+
+function rateLimit(ip, isWrite) {
+  const key = `${ip}:${isWrite ? 'w' : 'r'}`
+  const limit = isWrite ? RATE_LIMIT_WRITE : RATE_LIMIT_READ
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW
+  let timestamps = rateLimitWindows.get(key) || []
+  timestamps = timestamps.filter(t => t > cutoff)
+  if (timestamps.length >= limit) {
+    rateLimitWindows.set(key, timestamps)
+    return false
+  }
+  timestamps.push(now)
+  rateLimitWindows.set(key, timestamps)
+  return true
+}
+
+// Clean up rate limit windows periodically
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW
+  for (const [key, timestamps] of rateLimitWindows) {
+    const filtered = timestamps.filter(t => t > cutoff)
+    if (filtered.length === 0) rateLimitWindows.delete(key)
+    else rateLimitWindows.set(key, filtered)
+  }
+}, 60_000)
+
+// ── API key auth ─────────────────────────────────────
+const API_KEY = process.env.OFFICE_API_KEY || ''
+
+function checkAuth(req, res) {
+  if (!API_KEY) return true // No key configured = open access
+  const auth = req.headers.authorization || ''
+  if (auth === `Bearer ${API_KEY}`) return true
+  jsonResponse(res, 401, { error: 'Unauthorized - provide Authorization: Bearer <key>' })
+  return false
+}
+
+// CSP header value
+const CSP_HEADER = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'"
+
 // ── HTTP Server ──────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
+
+  // Add security headers to all responses
+  res.setHeader('Content-Security-Policy', CSP_HEADER)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
     res.end()
     return
@@ -175,6 +232,21 @@ const server = http.createServer(async (req, res) => {
 
   // API routes - delegate to shared layer
   if (url.pathname.startsWith('/api/')) {
+    // Health endpoint is always open (no auth, no rate limit)
+    const isHealth = url.pathname === '/api/health'
+
+    // Auth check (skip for health)
+    if (!isHealth && !checkAuth(req, res)) return
+
+    // Rate limiting
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown'
+    const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+    if (!isHealth && !rateLimit(clientIp, isWrite)) {
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' })
+      res.end(JSON.stringify({ error: 'Rate limit exceeded' }))
+      return
+    }
+
     try {
       let parsed = null
       let rawBody = ''

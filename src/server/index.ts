@@ -10,7 +10,10 @@ export { initWebhookDispatcher } from './webhook-dispatcher.js'
 export { init as initSlack } from './integrations/slack.js'
 export { init as initGitHub, webhookHandler as githubWebhookHandler } from './integrations/github.js'
 export { init as initLinear, webhookHandler as linearWebhookHandler } from './integrations/linear.js'
+export { init as initDiscord } from './integrations/discord.js'
+export { init as initNotion } from './integrations/notion.js'
 export { initSSE, addClient, removeClient, shutdownSSE, broadcastAgentOutput, broadcastSettingsChanged, getClientCount } from './sse.js'
+export { resolvePaths, resolveLegacyPaths, type OfficePaths } from './paths.js'
 export {
   sanitizePatch, validateObject, findMissing, generateId,
   VALID_PRESENCE, VALID_ROUTING, VALID_PRIORITY, VALID_DECISION_STATUSES,

@@ -16,6 +16,7 @@ export interface AgentCreateInput {
   systemPrompt?: string
   runtimeMaxTurns?: number; runtimeTimeoutSec?: number; runtimeWorkingDir?: string
   runtimeAllowedTools?: string; runtimeMode?: string
+  runtimeProvider?: string; runtimeModel?: string
 }
 
 export interface AgentUpdateInput {
@@ -24,6 +25,7 @@ export interface AgentUpdateInput {
   systemPrompt?: string
   runtimeMaxTurns?: number; runtimeTimeoutSec?: number; runtimeWorkingDir?: string
   runtimeAllowedTools?: string; runtimeMode?: string
+  runtimeProvider?: string; runtimeModel?: string
 }
 
 export interface ToastItem {

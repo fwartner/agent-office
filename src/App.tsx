@@ -8,6 +8,7 @@ import { RightSidebar } from './components/layout/RightSidebar'
 import { RoomOverlay } from './components/map/RoomOverlay'
 import { AgentSprite } from './components/map/AgentSprite'
 import { ToastContainer } from './components/shared/ToastContainer'
+import { CommandPalette } from './components/shared/CommandPalette'
 
 const OFFICE_MAP = '/assets/pixelart/office-map.png'
 const MAP_NATIVE_W = 640
@@ -43,6 +44,7 @@ export function App() {
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
   const [draggingAgentId, setDraggingAgentId] = useState<string | null>(null)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const dragAgentStart = useRef<{ x: number; y: number; agentXPct: number; agentYPct: number } | null>(null)
   const mapScrollRef = useRef<HTMLDivElement>(null)
 
@@ -58,10 +60,24 @@ export function App() {
     setMapScale(s => Math.min(4, Math.max(1, s + dir * 0.5)))
   }, [])
 
-  // Keyboard navigation
+  // Keyboard navigation + shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Command palette: Cmd/Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowCommandPalette(prev => !prev)
+        return
+      }
+      // New agent: Cmd/Ctrl+N
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault()
+        selectAgent(null)
+        setShowAgentForm('create')
+        return
+      }
       if (e.key === 'Escape') {
+        if (showCommandPalette) { setShowCommandPalette(false); return }
         selectAgent(null)
         setShowAgentForm(null)
         setSelectedRoomId(null)
@@ -79,7 +95,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectAgent, selectedAgentId, agents])
+  }, [selectAgent, selectedAgentId, agents, showCommandPalette])
 
   // Scroll wheel zoom
   useEffect(() => {
@@ -258,6 +274,14 @@ export function App() {
 
       {agents.length === 0 && dataSource !== 'seed' && <WelcomeOnboarding />}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {showCommandPalette && (
+        <CommandPalette
+          onClose={() => setShowCommandPalette(false)}
+          onCreateAgent={() => { selectAgent(null); setShowAgentForm('create') }}
+          onSelectAgent={(id) => { selectAgent(id); setSelectedRoomId(null) }}
+          onSelectRoom={(id) => { selectAgent(null); setSelectedRoomId(id) }}
+        />
+      )}
     </div>
   )
 }
