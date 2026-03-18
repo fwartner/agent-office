@@ -1,5 +1,5 @@
 /**
- * Webhook dispatcher — delivers events to configured webhook URLs.
+ * Webhook dispatcher - delivers events to configured webhook URLs.
  * Supports HMAC-SHA256 signatures, retry on failure, and log recording.
  */
 import crypto from 'node:crypto'

@@ -121,7 +121,7 @@ export function registerCallbacks(apiCtx: ApiContext) {
         const rooms = snap.rooms as Record<string, unknown>[]
         const lines = rooms.map(r => {
           const agents = (r.agents as string[]) || []
-          return `🏠 *${escapeMarkdown(String(r.name))}* — ${agents.length} agents`
+          return `🏠 *${escapeMarkdown(String(r.name))}* - ${agents.length} agents`
         }).join('\n')
         await tgCtx.editMessageText(lines || 'No rooms\\.', {
           parse_mode: 'MarkdownV2',
@@ -151,7 +151,7 @@ export function registerCallbacks(apiCtx: ApiContext) {
         }
         const lines = decisions.slice(0, 5).map(d => {
           const icon = d.status === 'accepted' ? '✅' : d.status === 'rejected' ? '❌' : '🗳'
-          return `${icon} *${escapeMarkdown(String(d.title))}* — ${escapeMarkdown(String(d.status))}`
+          return `${icon} *${escapeMarkdown(String(d.title))}* - ${escapeMarkdown(String(d.status))}`
         }).join('\n')
         await tgCtx.editMessageText(lines, {
           parse_mode: 'MarkdownV2',

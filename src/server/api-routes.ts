@@ -1,5 +1,5 @@
 /**
- * Shared API route handlers — used by both dev (vite) and prod (server.mjs).
+ * Shared API route handlers - used by both dev (vite) and prod (server.mjs).
  * Pure functions: (context, input) → response object. No HTTP framework dependency.
  */
 import fs from 'node:fs'
@@ -296,7 +296,7 @@ export async function sendMessage(ctx: ApiContext, input: unknown): Promise<ApiR
       // Direct message to one agent
       targetAgentIds = [String(o.toAgentId)]
     } else if (o.roomId) {
-      // Broadcast to room — all agents in that room should respond
+      // Broadcast to room - all agents in that room should respond
       try {
         const snap = await ctx.getSnapshot()
         const agents = snap.agents as Array<Record<string, unknown>>

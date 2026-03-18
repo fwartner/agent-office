@@ -128,7 +128,7 @@ apiCtx.onSettingsChanged = (settings) => {
 }
 
 // ── HTTP helpers ─────────────────────────────────────
-/** Returns { parsed, raw } — parsed is the JSON object, raw is the string for signature verification */
+/** Returns { parsed, raw } - parsed is the JSON object, raw is the string for signature verification */
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -173,7 +173,7 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // API routes — delegate to shared layer
+  // API routes - delegate to shared layer
   if (url.pathname.startsWith('/api/')) {
     try {
       let parsed = null
@@ -212,7 +212,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Static files — assets
+  // Static files - assets
   let filePath = path.join(__dirname, url.pathname)
   if (url.pathname.startsWith('/assets/') && isSafePath(filePath) && fs.existsSync(filePath)) {
     const ext = path.extname(filePath)
@@ -221,7 +221,7 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // Static files — dist
+  // Static files - dist
   filePath = path.join(DIST, url.pathname === '/' ? 'index.html' : url.pathname)
   if (isSafePath(filePath) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath)
@@ -300,7 +300,7 @@ server.listen(PORT, '0.0.0.0', async () => {
 
 // ── Graceful shutdown ────────────────────────────────
 function shutdown(signal) {
-  console.log(`\n${signal} received — shutting down gracefully`)
+  console.log(`\n${signal} received - shutting down gracefully`)
   shutdownSSE()
   shutdownAll()
   stopBot()

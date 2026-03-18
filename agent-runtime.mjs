@@ -1,5 +1,5 @@
 /**
- * Agent Runtime — Process manager for Claude Code agent spawning.
+ * Agent Runtime - Process manager for Claude Code agent spawning.
  * Shared by both vite.config.ts (dev) and server.mjs (prod).
  */
 import { spawn } from 'node:child_process'
@@ -71,11 +71,11 @@ export function unregisterAgent(agentId) {
 export function dispatchTask(agentId, assignment, callbacks) {
   const entry = registry.get(agentId)
   if (!entry) {
-    console.warn(`[agent-runtime] Cannot dispatch — agent ${agentId} not registered`)
+    console.warn(`[agent-runtime] Cannot dispatch - agent ${agentId} not registered`)
     return false
   }
   if (entry.currentTask) {
-    console.warn(`[agent-runtime] Cannot dispatch — agent ${agentId} is busy with ${entry.currentTask.assignmentId}`)
+    console.warn(`[agent-runtime] Cannot dispatch - agent ${agentId} is busy with ${entry.currentTask.assignmentId}`)
     return false
   }
 

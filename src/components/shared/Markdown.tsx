@@ -13,7 +13,7 @@ export function Markdown({ text, className }: { text: string; className?: string
   return <div className={`md-content ${className ?? ''}`} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-/** Inline markdown — strips block elements, suitable for speech bubbles */
+/** Inline markdown - strips block elements, suitable for speech bubbles */
 export function InlineMarkdown({ text }: { text: string }) {
   const html = useMemo(() => {
     if (!text) return ''

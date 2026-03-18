@@ -1,5 +1,5 @@
 /**
- * Telegram bot — conditional activation.
+ * Telegram bot - conditional activation.
  * Only starts when TELEGRAM_BOT_TOKEN is set.
  */
 import { Bot, type Context } from 'grammy'
@@ -16,7 +16,7 @@ let _bot: Bot<BotContext> | null = null
 
 export async function startBot(token: string, ctx: ApiContext): Promise<void> {
   if (!token) {
-    console.log('[bot] No TELEGRAM_BOT_TOKEN — bot disabled')
+    console.log('[bot] No TELEGRAM_BOT_TOKEN - bot disabled')
     return
   }
 

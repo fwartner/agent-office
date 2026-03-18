@@ -17,7 +17,7 @@ function isSafePath(filePath, allowedRoots) {
   return allowedRoots.some(root => resolved.startsWith(root + path.sep) || resolved === root)
 }
 
-describe('sanitizePatch — field whitelist', () => {
+describe('sanitizePatch - field whitelist', () => {
   it('keeps only allowed fields', () => {
     const result = sanitizePatch({
       presence: 'active',

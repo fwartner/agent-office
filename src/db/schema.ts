@@ -1,5 +1,5 @@
 /**
- * Drizzle ORM schema — SQLite dialect (default backend).
+ * Drizzle ORM schema - SQLite dialect (default backend).
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
 

@@ -1,5 +1,5 @@
 /**
- * JSON file-backed ApiContext — preserves backward compatibility with
+ * JSON file-backed ApiContext - preserves backward compatibility with
  * state/office-snapshot.json while the new DB layer is wired in.
  */
 import fs from 'node:fs'

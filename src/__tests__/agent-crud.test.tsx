@@ -68,7 +68,7 @@ async function renderAppAndSelectAgent() {
   return result!
 }
 
-describe('Agent CRUD — Create', () => {
+describe('Agent CRUD - Create', () => {
   it('create form renders with all fields', async () => {
     await renderAppAndSelectAgent()
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -104,7 +104,7 @@ describe('Agent CRUD — Create', () => {
   })
 })
 
-describe('Agent CRUD — Edit', () => {
+describe('Agent CRUD - Edit', () => {
   it('edit form pre-fills agent data', async () => {
     await renderAppAndSelectAgent()
     fireEvent.click(screen.getByText('Edit'))
@@ -138,7 +138,7 @@ describe('Agent CRUD — Edit', () => {
   })
 })
 
-describe('Agent CRUD — Delete', () => {
+describe('Agent CRUD - Delete', () => {
   it('delete shows confirmation prompt', async () => {
     await renderAppAndSelectAgent()
     fireEvent.click(screen.getByText('Delete'))

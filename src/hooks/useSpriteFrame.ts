@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-/** Sprite animation hook — cycles through frames at a given FPS */
+/** Sprite animation hook - cycles through frames at a given FPS */
 export function useSpriteFrame(frameCount: number, fps: number = 6): number {
   const [frame, setFrame] = useState(0)
   useEffect(() => {

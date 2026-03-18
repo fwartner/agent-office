@@ -46,7 +46,7 @@ export function AgentDetailPanel({ agent, room, presenceColors, assignments, act
     ...assignments.map(a => ({
       id: `assignment-live-${a.id}`,
       kind: 'assignment' as const,
-      text: `${a.status.toUpperCase()} · ${a.taskTitle}${a.taskBrief ? ` — ${a.taskBrief}` : ''}`,
+      text: `${a.status.toUpperCase()} · ${a.taskTitle}${a.taskBrief ? ` - ${a.taskBrief}` : ''}`,
       createdAt: a.createdAt,
     })),
     ...activity.map(item => ({

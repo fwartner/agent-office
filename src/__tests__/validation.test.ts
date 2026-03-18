@@ -29,7 +29,7 @@ function sanitizePatch(raw: Record<string, unknown>): Record<string, unknown> {
   return clean
 }
 
-describe('Validation — AGENT_ID_RE', () => {
+describe('Validation - AGENT_ID_RE', () => {
   it('accepts lowercase kebab-case ids', () => {
     expect(AGENT_ID_RE.test('forge')).toBe(true)
     expect(AGENT_ID_RE.test('my-agent')).toBe(true)
@@ -50,7 +50,7 @@ describe('Validation — AGENT_ID_RE', () => {
   })
 })
 
-describe('Validation — sanitizePatch', () => {
+describe('Validation - sanitizePatch', () => {
   it('only keeps whitelisted fields', () => {
     const result = sanitizePatch({ presence: 'active', unknownField: 'bad', name: 'hack' })
     expect(result).toHaveProperty('presence', 'active')
@@ -76,7 +76,7 @@ describe('Validation — sanitizePatch', () => {
   })
 })
 
-describe('Validation — presence states', () => {
+describe('Validation - presence states', () => {
   it('has exactly 6 valid states', () => {
     expect(VALID_PRESENCE).toHaveLength(6)
   })
@@ -88,7 +88,7 @@ describe('Validation — presence states', () => {
   })
 })
 
-describe('Validation — assignment statuses', () => {
+describe('Validation - assignment statuses', () => {
   it('has 5 valid statuses', () => {
     expect(ASSIGNMENT_STATUSES).toHaveLength(5)
     expect(ASSIGNMENT_STATUSES).toContain('queued')
@@ -97,19 +97,19 @@ describe('Validation — assignment statuses', () => {
   })
 })
 
-describe('Validation — routing targets', () => {
+describe('Validation - routing targets', () => {
   it('has 3 valid targets', () => {
     expect(VALID_ROUTING).toEqual(['agent_runtime', 'work_tracker', 'both'])
   })
 })
 
-describe('Validation — priorities', () => {
+describe('Validation - priorities', () => {
   it('has 3 valid priorities', () => {
     expect(VALID_PRIORITY).toEqual(['low', 'medium', 'high'])
   })
 })
 
-describe('Validation — decision statuses', () => {
+describe('Validation - decision statuses', () => {
   it('has 3 valid statuses', () => {
     expect(VALID_DECISION_STATUSES).toEqual(['proposed', 'accepted', 'rejected'])
   })

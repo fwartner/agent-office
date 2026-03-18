@@ -17,7 +17,7 @@ export type DbDialect = 'sqlite' | 'postgres'
 
 export interface DbConnection {
   dialect: DbDialect
-  /** Drizzle database instance — type varies by dialect */
+  /** Drizzle database instance - type varies by dialect */
   db: unknown
   /** The schema tables for the active dialect */
   schema: typeof import('./schema.js')

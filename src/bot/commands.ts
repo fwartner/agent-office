@@ -19,14 +19,14 @@ export function registerCommands(ctx: ApiContext) {
       await tgCtx.reply(
         `*Available Commands:*
 
-/start — Main menu
-/help — This help message
-/agents — List all agents
-/tasks — List active tasks
-/rooms — List rooms
-/status — Dashboard summary
-/assign — Assign a task
-/decide — Propose a decision`,
+/start - Main menu
+/help - This help message
+/agents - List all agents
+/tasks - List active tasks
+/rooms - List rooms
+/status - Dashboard summary
+/assign - Assign a task
+/decide - Propose a decision`,
         { parse_mode: 'MarkdownV2' }
       )
     },
@@ -77,7 +77,7 @@ export function registerCommands(ctx: ApiContext) {
         const rooms = snapshot.rooms as Record<string, unknown>[]
         const lines = rooms.map(r => {
           const agents = (r.agents as string[]) || []
-          return `🏠 *${escapeMarkdown(String(r.name))}* — ${escapeMarkdown(String(r.team))}\n  ${agents.length} agents`
+          return `🏠 *${escapeMarkdown(String(r.name))}* - ${escapeMarkdown(String(r.team))}\n  ${agents.length} agents`
         }).join('\n\n')
         await tgCtx.reply(lines || 'No rooms\\.', {
           parse_mode: 'MarkdownV2',

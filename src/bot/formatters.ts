@@ -25,7 +25,7 @@ export function agentCard(agent: Record<string, unknown>): string {
   const team = escapeMarkdown(String(agent.team || ''))
   const presence = String(agent.presence || 'off_hours')
   const focus = agent.focus ? `\nFocus: ${escapeMarkdown(String(agent.focus))}` : ''
-  return `${presenceEmoji(presence)} *${name}* — ${role}\nTeam: ${team} \\| Status: ${escapeMarkdown(presence)}${focus}`
+  return `${presenceEmoji(presence)} *${name}* - ${role}\nTeam: ${team} \\| Status: ${escapeMarkdown(presence)}${focus}`
 }
 
 export function taskCard(task: Record<string, unknown>): string {

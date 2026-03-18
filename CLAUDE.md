@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Agent Office is a pixel-art virtual office for AI agent teams. Agents have live presence states, sit in themed rooms, and can be managed through a retro-styled UI or Telegram bot. Early development — APIs and features may change without notice.
+Agent Office is a pixel-art virtual office for AI agent teams. Agents have live presence states, sit in themed rooms, and can be managed through a retro-styled UI or Telegram bot. Early development - APIs and features may change without notice.
 
 ## Commands
 
@@ -34,15 +34,15 @@ Run a single test file: `npx vitest run src/__tests__/app.test.tsx`
 
 **Data flow:** `OfficeProvider` (React context) polls `GET /api/office/snapshot` every 2-3 seconds. Mutations go through provider methods → POST/PATCH/DELETE endpoints → DB or state file → next poll picks up changes.
 
-**Event system:** `src/server/events.ts` — EventEmitter-based pub/sub. API routes emit events, adapters (webhook, Telegram, Slack, GitHub, Linear) subscribe.
+**Event system:** `src/server/events.ts` - EventEmitter-based pub/sub. API routes emit events, adapters (webhook, Telegram, Slack, GitHub, Linear) subscribe.
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `src/App.tsx` | Main UI — map canvas, room overlays, agent sprites, sidebar panels, forms |
-| `src/office-provider.tsx` | React context — polling, state management, CRUD wrappers, validation |
-| `src/data.ts` | Seed data — agents, rooms, seats, workday policy |
+| `src/App.tsx` | Main UI - map canvas, room overlays, agent sprites, sidebar panels, forms |
+| `src/office-provider.tsx` | React context - polling, state management, CRUD wrappers, validation |
+| `src/data.ts` | Seed data - agents, rooms, seats, workday policy |
 | `src/world.ts` | Sprite definitions, animation metadata, character sets |
 | `src/office-state.ts` | TypeScript type definitions |
 | `src/server/api-routes.ts` | Shared API route handlers (pure functions) |
@@ -71,26 +71,26 @@ Run a single test file: `npx vitest run src/__tests__/app.test.tsx`
 
 Shared route handlers in `src/server/api-routes.ts`, used by both dev and prod:
 
-- `GET /api/health` — health check (status, version, DB type, uptime)
-- `GET /api/office/snapshot` — full state
-- `POST /api/office/agent` — create agent
-- `PUT /api/office/agent/:id` — full update
-- `PATCH /api/office/agent/:id` — partial update (whitelisted fields only)
-- `DELETE /api/office/agent/:id` — remove agent + cascade
-- `POST /api/office/assign` — queue task
-- `PATCH /api/office/assignment/:id` — update assignment status
-- `GET /api/office/assignments` — query assignments with filters
-- `POST /api/office/activity` — log activity
-- `POST /api/office/decision` — create decision
-- `PATCH /api/office/decision/:id` — update decision
-- `POST /api/office/message` — send message
-- `GET /api/office/messages` — query messages
-- `POST /api/office/room` — create room
-- `PUT /api/office/room/:id` — update room
-- `DELETE /api/office/room/:id` — delete room
-- `POST /api/office/webhook` — create webhook
-- `DELETE /api/office/webhook/:id` — delete webhook
-- `PATCH /api/office/settings` — update settings
+- `GET /api/health` - health check (status, version, DB type, uptime)
+- `GET /api/office/snapshot` - full state
+- `POST /api/office/agent` - create agent
+- `PUT /api/office/agent/:id` - full update
+- `PATCH /api/office/agent/:id` - partial update (whitelisted fields only)
+- `DELETE /api/office/agent/:id` - remove agent + cascade
+- `POST /api/office/assign` - queue task
+- `PATCH /api/office/assignment/:id` - update assignment status
+- `GET /api/office/assignments` - query assignments with filters
+- `POST /api/office/activity` - log activity
+- `POST /api/office/decision` - create decision
+- `PATCH /api/office/decision/:id` - update decision
+- `POST /api/office/message` - send message
+- `GET /api/office/messages` - query messages
+- `POST /api/office/room` - create room
+- `PUT /api/office/room/:id` - update room
+- `DELETE /api/office/room/:id` - delete room
+- `POST /api/office/webhook` - create webhook
+- `DELETE /api/office/webhook/:id` - delete webhook
+- `PATCH /api/office/settings` - update settings
 
 ### Validation Constants (in src/server/validation.ts)
 
@@ -102,8 +102,8 @@ Shared route handlers in `src/server/api-routes.ts`, used by both dev and prod:
 
 ### TypeScript Configuration
 
-- `tsconfig.json` — Frontend (React/Vite), excludes src/db, src/server, src/bot
-- `tsconfig.server.json` — Server modules (Node.js), includes src/db, src/server, src/bot
+- `tsconfig.json` - Frontend (React/Vite), excludes src/db, src/server, src/bot
+- `tsconfig.server.json` - Server modules (Node.js), includes src/db, src/server, src/bot
 
 ## Testing
 
@@ -111,10 +111,10 @@ Tests live in `src/__tests__/` (component/unit) and `tests/` (API integration). 
 
 ## Code Conventions
 
-- TypeScript strict mode — no `any` types
+- TypeScript strict mode - no `any` types
 - Functional React with hooks only (except ErrorBoundary)
-- All CSS in `src/styles.css` — no CSS-in-JS, uses CSS custom properties
-- Pixel-art aesthetic with Press Start 2P font — keep retro theme consistent
+- All CSS in `src/styles.css` - no CSS-in-JS, uses CSS custom properties
+- Pixel-art aesthetic with Press Start 2P font - keep retro theme consistent
 - WCAG 2.1 AA accessibility: ARIA landmarks, keyboard navigation, focus indicators
 - Commit messages: conventional style (`fix:`, `feat:`, `test:`, etc.)
-- No separate linter configured — TypeScript strict mode is the quality gate
+- No separate linter configured - TypeScript strict mode is the quality gate

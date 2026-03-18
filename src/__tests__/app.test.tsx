@@ -62,7 +62,7 @@ function renderApp() {
   )
 }
 
-describe('App — with agents (via API)', () => {
+describe('App - with agents (via API)', () => {
   beforeEach(() => {
     mockFetchWithAgents()
   })
@@ -111,7 +111,7 @@ describe('App — with agents (via API)', () => {
   })
 })
 
-describe('App — empty office (seed fallback)', () => {
+describe('App - empty office (seed fallback)', () => {
   beforeEach(() => {
     mockFetchFailing()
   })

@@ -229,7 +229,7 @@ describe('Accessibility', () => {
     )
     expect(focusable.length).toBeGreaterThan(0)
 
-    // Focus the last element and press Tab — should wrap to first
+    // Focus the last element and press Tab - should wrap to first
     const last = focusable[focusable.length - 1]
     last.focus()
     fireEvent.keyDown(dialog, { key: 'Tab' })

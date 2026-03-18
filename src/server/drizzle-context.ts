@@ -1,5 +1,5 @@
 /**
- * Drizzle ORM-backed ApiContext — uses SQLite or Postgres via Drizzle.
+ * Drizzle ORM-backed ApiContext - uses SQLite or Postgres via Drizzle.
  * Replaces the JSON file context when a database is configured.
  */
 import fs from 'node:fs'
@@ -117,7 +117,7 @@ export function createDrizzleContext(
         agentSeats[e.agentId] = { xPct: e.anchorXPct, yPct: e.anchorYPct }
       }
 
-      // Map webhooks — parse events JSON for SQLite
+      // Map webhooks - parse events JSON for SQLite
       const webhookCards = webhooks.map(w => ({
         ...w,
         events: typeof w.events === 'string' ? JSON.parse(w.events as string) : w.events,

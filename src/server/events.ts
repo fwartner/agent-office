@@ -1,5 +1,5 @@
 /**
- * Event bus — simple EventEmitter-based pub/sub for office events.
+ * Event bus - simple EventEmitter-based pub/sub for office events.
  * Adapters (webhook, Telegram, Slack, etc.) subscribe to events.
  */
 import { EventEmitter } from 'node:events'

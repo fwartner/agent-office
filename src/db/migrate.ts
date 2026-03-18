@@ -1,5 +1,5 @@
 /**
- * Auto-migration runner — applies schema on startup (idempotent).
+ * Auto-migration runner - applies schema on startup (idempotent).
  *
  * For SQLite: uses drizzle-kit push approach via raw SQL from schema.
  * For Postgres: uses drizzle-kit push approach via raw SQL from schema.
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS office_integrations (
 );
 `
 
-/** SQLite ALTER TABLE additions — idempotent, silently ignores if column exists */
+/** SQLite ALTER TABLE additions - idempotent, silently ignores if column exists */
 const SQLITE_ALTER = [
   'ALTER TABLE office_agents ADD COLUMN runtime_max_turns INTEGER DEFAULT 3',
   'ALTER TABLE office_agents ADD COLUMN runtime_timeout_sec INTEGER DEFAULT 300',
@@ -267,7 +267,7 @@ CREATE TABLE IF NOT EXISTS office_integrations (
 );
 `
 
-/** Postgres ALTER TABLE additions — idempotent, silently ignores if column exists */
+/** Postgres ALTER TABLE additions - idempotent, silently ignores if column exists */
 const POSTGRES_ALTER = [
   'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_max_turns INTEGER DEFAULT 3',
   'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_timeout_sec INTEGER DEFAULT 300',

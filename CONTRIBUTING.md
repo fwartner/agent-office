@@ -24,10 +24,10 @@ To re-run setup: `npm run setup:force`
 
 ## Code Style
 
-- TypeScript strict mode — no `any` types
+- TypeScript strict mode - no `any` types
 - Functional React components with hooks
-- CSS in `src/styles.css` — no CSS-in-JS
-- Pixel-art aesthetic — keep the retro theme consistent
+- CSS in `src/styles.css` - no CSS-in-JS
+- Pixel-art aesthetic - keep the retro theme consistent
 
 ## Testing
 
@@ -49,7 +49,7 @@ Use concise, descriptive messages:
 
 ## Pull Requests
 
-- Keep PRs focused — one feature or fix per PR
+- Keep PRs focused - one feature or fix per PR
 - Fill in the PR template
 - Ensure CI passes before requesting review
 - Include screenshots for UI changes
@@ -64,5 +64,5 @@ Use the [feature request template](https://github.com/fwartner/agent-office/issu
 
 ## Maintainer
 
-**Florian Wartner** — [Pixel & Process](https://pixelandprocess.de)
+**Florian Wartner** - [Pixel & Process](https://pixelandprocess.de)
 Email: [florian@wartner.io](mailto:florian@wartner.io)

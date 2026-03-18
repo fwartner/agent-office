@@ -1,7 +1,7 @@
 {
   "name": "agent-office",
   "version": "0.3.0",
-  "description": "Pixel-art virtual office for AI agent teams — live presence, room navigation, agent CRUD, and task assignment in a retro-styled shared workspace.",
+  "description": "Pixel-art virtual office for AI agent teams - live presence, room navigation, agent CRUD, and task assignment in a retro-styled shared workspace.",
   "type": "module",
   "license": "MIT",
   "author": "Florian Wartner <florian@wartner.io> (https://pixelandprocess.de)",

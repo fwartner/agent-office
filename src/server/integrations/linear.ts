@@ -1,4 +1,4 @@
-/** Linear integration — bidirectional. Env: LINEAR_API_KEY, LINEAR_WEBHOOK_SECRET, LINEAR_TEAM_ID */
+/** Linear integration - bidirectional. Env: LINEAR_API_KEY, LINEAR_WEBHOOK_SECRET, LINEAR_TEAM_ID */
 import crypto from 'node:crypto'
 import { on, type OfficeEvent } from '../events.js'
 import type { ApiContext } from '../api-routes.js'
@@ -101,7 +101,7 @@ export function webhookHandler(ctx: ApiContext) {
 
 export function init(_ctx: ApiContext): void {
   if (!LINEAR_API_KEY) {
-    console.log('[linear] LINEAR_API_KEY not set — integration disabled')
+    console.log('[linear] LINEAR_API_KEY not set - integration disabled')
     return
   }
   console.log('[linear] integration enabled')

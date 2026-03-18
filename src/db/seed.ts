@@ -1,5 +1,5 @@
 /**
- * Seed data — populates empty database with default rooms.
+ * Seed data - populates empty database with default rooms.
  * Only inserts if tables are empty (idempotent).
  */
 import type { DbConnection } from './index.js'
@@ -22,7 +22,7 @@ export async function seedDatabase(conn: DbConnection): Promise<void> {
   // Check if rooms exist
   const existingRooms = await db.select({ id: schema.officeRooms.id }).from(schema.officeRooms).limit(1)
   if (existingRooms.length > 0) {
-    console.log('[db] Seed skipped — data already exists')
+    console.log('[db] Seed skipped - data already exists')
     return
   }
 

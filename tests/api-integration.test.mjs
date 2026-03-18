@@ -43,7 +43,7 @@ function validateAgentCreate(input) {
   return errors
 }
 
-describe('GET /api/office/snapshot — shape validation', () => {
+describe('GET /api/office/snapshot - shape validation', () => {
   it('valid snapshot has agents[], rooms[], assignments[], activity[]', () => {
     const snapshot = {
       agents: [{ id: 'forge', name: 'Forge', presence: 'active' }],
@@ -60,7 +60,7 @@ describe('GET /api/office/snapshot — shape validation', () => {
   })
 })
 
-describe('PATCH /api/office/agent/:id — validation', () => {
+describe('PATCH /api/office/agent/:id - validation', () => {
   it('sanitizePatch only allows whitelisted fields', () => {
     const result = sanitizePatch({ presence: 'active', id: 'evil', name: 'hacked' })
     expect(result).toEqual({ presence: 'active' })
@@ -88,7 +88,7 @@ describe('PATCH /api/office/agent/:id — validation', () => {
   })
 })
 
-describe('PATCH /api/office/assignment/:id — validation', () => {
+describe('PATCH /api/office/assignment/:id - validation', () => {
   it('accepts all valid status values', () => {
     for (const status of ASSIGNMENT_STATUSES) {
       expect(ASSIGNMENT_STATUSES.includes(status)).toBe(true)
@@ -101,7 +101,7 @@ describe('PATCH /api/office/assignment/:id — validation', () => {
   })
 })
 
-describe('POST /api/office/assign — validation', () => {
+describe('POST /api/office/assign - validation', () => {
   it('rejects missing fields', () => {
     const errors = validateAssignInput({})
     expect(errors.length).toBeGreaterThan(0)
@@ -144,7 +144,7 @@ describe('POST /api/office/assign — validation', () => {
   })
 })
 
-describe('POST /api/office/activity — validation', () => {
+describe('POST /api/office/activity - validation', () => {
   it('rejects non-object body', () => {
     const body = [1, 2, 3]
     expect(Array.isArray(body)).toBe(true)
@@ -158,7 +158,7 @@ describe('POST /api/office/activity — validation', () => {
   })
 })
 
-describe('POST /api/office/agent — create validation', () => {
+describe('POST /api/office/agent - create validation', () => {
   it('rejects missing required fields', () => {
     const errors = validateAgentCreate({})
     expect(errors.length).toBeGreaterThan(0)
@@ -205,7 +205,7 @@ describe('POST /api/office/agent — create validation', () => {
   })
 })
 
-describe('PUT /api/office/agent/:id — update validation', () => {
+describe('PUT /api/office/agent/:id - update validation', () => {
   it('would return 404 for unknown agent', () => {
     const agents = [{ id: 'forge' }]
     expect(agents.find(a => a.id === 'nonexistent')).toBeUndefined()
@@ -217,7 +217,7 @@ describe('PUT /api/office/agent/:id — update validation', () => {
   })
 })
 
-describe('DELETE /api/office/agent/:id — validation', () => {
+describe('DELETE /api/office/agent/:id - validation', () => {
   it('would return 404 for unknown agent', () => {
     const agents = [{ id: 'forge' }, { id: 'prism' }]
     const idx = agents.findIndex(a => a.id === 'unknown')
@@ -242,7 +242,7 @@ describe('DELETE /api/office/agent/:id — validation', () => {
   })
 })
 
-describe('PATCH /api/office/assignment/:id — result field validation', () => {
+describe('PATCH /api/office/assignment/:id - result field validation', () => {
   it('result can only be provided when status is done', () => {
     const body = { status: 'active', result: 'some result' }
     const isValid = body.status === 'done' || body.result === undefined
@@ -289,7 +289,7 @@ describe('PATCH /api/office/assignment/:id — result field validation', () => {
   })
 })
 
-describe('POST /api/office/result/:assignmentId/save — validation', () => {
+describe('POST /api/office/result/:assignmentId/save - validation', () => {
   it('requires assignment to have a result', () => {
     const assignment = { id: 'a-1', result: undefined }
     expect(!assignment.result).toBe(true)

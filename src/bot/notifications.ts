@@ -1,5 +1,5 @@
 /**
- * Push notifications — sends Telegram messages when office events occur.
+ * Push notifications - sends Telegram messages when office events occur.
  */
 import type { Bot, Context } from 'grammy'
 import { onAll, type OfficeEvent } from '../server/events.js'

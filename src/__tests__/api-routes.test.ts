@@ -16,7 +16,7 @@ let tmpDir: string
 let stateFile: string
 let resultsDir: string
 
-describeIfBuilt('API Routes — shared layer', () => {
+describeIfBuilt('API Routes - shared layer', () => {
   beforeEach(async () => {
     const mod = await import('../../dist-server/server/index.js')
     routeRequest = mod.routeRequest

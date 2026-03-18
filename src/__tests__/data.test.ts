@@ -12,7 +12,7 @@ import {
 
 const VALID_PRESENCE: PresenceState[] = ['off_hours', 'available', 'active', 'in_meeting', 'paused', 'blocked']
 
-describe('data — agents', () => {
+describe('data - agents', () => {
   it('exports an empty array of agents by default', () => {
     expect(agents).toEqual([])
   })
@@ -23,7 +23,7 @@ describe('data — agents', () => {
   })
 })
 
-describe('data — rooms', () => {
+describe('data - rooms', () => {
   it('exports a non-empty array of rooms', () => {
     expect(rooms.length).toBeGreaterThan(0)
   })
@@ -64,13 +64,13 @@ describe('data — rooms', () => {
   })
 })
 
-describe('data — agentSeats', () => {
+describe('data - agentSeats', () => {
   it('is empty by default', () => {
     expect(Object.keys(agentSeats)).toHaveLength(0)
   })
 })
 
-describe('data — workdayPolicy', () => {
+describe('data - workdayPolicy', () => {
   it('has a valid timezone', () => {
     expect(workdayPolicy.timezone).toBe('Europe/Berlin')
   })
@@ -86,7 +86,7 @@ describe('data — workdayPolicy', () => {
   })
 })
 
-describe('data — seedOfficeSnapshot', () => {
+describe('data - seedOfficeSnapshot', () => {
   it('has all required fields', () => {
     expect(seedOfficeSnapshot.agents).toBe(agents)
     expect(seedOfficeSnapshot.rooms).toBe(rooms)

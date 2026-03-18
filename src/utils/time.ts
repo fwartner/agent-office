@@ -1,4 +1,4 @@
-/** Safe date formatting — HH:MM */
+/** Safe date formatting - HH:MM */
 export function safeTime(raw: string): string {
   const d = new Date(raw)
   if (isNaN(d.getTime())) return '--:--'

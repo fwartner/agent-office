@@ -1,5 +1,5 @@
 /**
- * Drizzle ORM schema — PostgreSQL dialect.
+ * Drizzle ORM schema - PostgreSQL dialect.
  */
 import { pgTable, text, boolean, real, integer, timestamp } from 'drizzle-orm/pg-core'
 

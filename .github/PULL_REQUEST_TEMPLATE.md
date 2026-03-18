@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What does this PR do? Keep it brief — 1-3 bullet points. -->
+<!-- What does this PR do? Keep it brief - 1-3 bullet points. -->
 
 ## Changes
 

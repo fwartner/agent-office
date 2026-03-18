@@ -1,5 +1,5 @@
 /**
- * GitHub integration — bidirectional.
+ * GitHub integration - bidirectional.
  * Inbound: webhook receiver for push/PR/issue events -> activity feed.
  * Outbound: creates GitHub issues when tasks complete.
  *
@@ -94,7 +94,7 @@ export function webhookHandler(ctx: ApiContext) {
 
 export function init(ctx: ApiContext): void {
   if (!GITHUB_TOKEN && !GITHUB_WEBHOOK_SECRET) {
-    console.log('[github] GITHUB_TOKEN / GITHUB_WEBHOOK_SECRET not set — integration disabled')
+    console.log('[github] GITHUB_TOKEN / GITHUB_WEBHOOK_SECRET not set - integration disabled')
     return
   }
   console.log('[github] integration enabled')

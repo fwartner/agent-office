@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Agent Office — First-run setup wizard.
+ * Agent Office - First-run setup wizard.
  *
  * Walks through database backend, Telegram bot, integrations, and port.
  * Writes .env file and initialises seed state.
@@ -62,7 +62,7 @@ function select(question, options, defaultIdx = 0) {
     console.log(`  ${question}`)
     options.forEach((opt, i) => {
       const marker = i === defaultIdx ? `${c.cyan}>${c.reset}` : ' '
-      console.log(`  ${marker} ${c.bold}${i + 1}${c.reset}) ${opt.label}${opt.desc ? ` ${c.dim}— ${opt.desc}${c.reset}` : ''}`)
+      console.log(`  ${marker} ${c.bold}${i + 1}${c.reset}) ${opt.label}${opt.desc ? ` ${c.dim}- ${opt.desc}${c.reset}` : ''}`)
     })
     rl.question(`  ${c.dim}Choice [${defaultIdx + 1}]:${c.reset} `, answer => {
       const idx = parseInt(answer.trim()) - 1
@@ -181,14 +181,14 @@ async function main() {
       envVars.TELEGRAM_BOT_TOKEN = token
       console.log(`  ${c.green}✓${c.reset} Telegram bot configured`)
     } else {
-      console.log(`  ${c.yellow}!${c.reset} No token provided — bot disabled`)
+      console.log(`  ${c.yellow}!${c.reset} No token provided - bot disabled`)
     }
   }
 
   // ── Step 3: Integrations ──────────────────────────
   step('Integrations (optional)')
 
-  console.log(`  ${c.dim}Connect to external services. All optional — skip to use later.${c.reset}`)
+  console.log(`  ${c.dim}Connect to external services. All optional - skip to use later.${c.reset}`)
 
   const useSlack = await confirm('Enable Slack notifications?', false)
   if (useSlack) {

@@ -328,7 +328,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer)
   }, [agentBubbles.size])
 
-  // SSE handler — apply real-time updates from server
+  // SSE handler - apply real-time updates from server
   const handleSSE = useCallback((eventType: SSEEventType, data: unknown) => {
     const d = data as Record<string, unknown>
     switch (eventType) {
@@ -450,7 +450,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
           setWebhooks(data.webhooks)
         }
 
-        // Notification diffing — detect important changes
+        // Notification diffing - detect important changes
         if (wasLive.current && data.assignments) {
           const prevAssignments = prevSnapshotRef.current.assignments
           for (const a of data.assignments) {
@@ -485,11 +485,11 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
         consecutiveFailures.current++
         // Only show error after being live then losing connection, or after many failures
         if (wasLive.current) {
-          setConnectionError('Connection lost — using last known state')
+          setConnectionError('Connection lost - using last known state')
           setDataSource('seed')
           wasLive.current = false
         } else if (consecutiveFailures.current > 3) {
-          setConnectionError('Backend unavailable — running on seed data')
+          setConnectionError('Backend unavailable - running on seed data')
         }
       }
 
@@ -587,7 +587,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     })
     setBubble(input.targetAgentId, `On it! Working on: ${title}`, '#95d8ff', 5000)
 
-    // POST to server — log failure to activity feed
+    // POST to server - log failure to activity feed
     fetch('/api/office/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -603,7 +603,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       addActivity({
         kind: 'system',
-        text: `Failed to persist assignment "${title}" — saved locally only`,
+        text: `Failed to persist assignment "${title}" - saved locally only`,
       })
     })
   }, [rawAgents, setBubble])
@@ -628,12 +628,12 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ status: 'done', result }),
       })
       if (!res.ok) {
-        addActivity({ kind: 'system', text: 'Failed to persist task completion — saved locally only' })
+        addActivity({ kind: 'system', text: 'Failed to persist task completion - saved locally only' })
         return false
       }
       return true
     } catch {
-      addActivity({ kind: 'system', text: 'Failed to persist task completion — network error' })
+      addActivity({ kind: 'system', text: 'Failed to persist task completion - network error' })
       return false
     }
   }, [assignments, rawAgents])
@@ -659,7 +659,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       setBubble(agentId, 'Task cancelled', '#ff8b8b', 4000)
       return true
     } catch {
-      addActivity({ kind: 'system', text: 'Failed to cancel task — network error' })
+      addActivity({ kind: 'system', text: 'Failed to cancel task - network error' })
       return false
     }
   }, [rawAgents, setBubble])
@@ -679,7 +679,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       addActivity({ kind: 'system', text: 'Result saved to local file' })
       return true
     } catch {
-      addActivity({ kind: 'system', text: 'Failed to save result — network error' })
+      addActivity({ kind: 'system', text: 'Failed to save result - network error' })
       return false
     }
   }, [])
@@ -721,7 +721,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     } catch {
       setRawAgents(current => current.filter(a => a.id !== input.id))
       setCurrentSeats(current => { const next = { ...current }; delete next[input.id]; return next })
-      addActivity({ kind: 'system', text: 'Failed to create agent — network error' })
+      addActivity({ kind: 'system', text: 'Failed to create agent - network error' })
       return false
     }
   }, [])
@@ -743,13 +743,13 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) {
         setRawAgents(current => current.map(a => a.id === id ? oldAgent : a))
-        addActivity({ kind: 'system', text: 'Failed to update agent — server error' })
+        addActivity({ kind: 'system', text: 'Failed to update agent - server error' })
         return false
       }
       return true
     } catch {
       setRawAgents(current => current.map(a => a.id === id ? oldAgent : a))
-      addActivity({ kind: 'system', text: 'Failed to update agent — network error' })
+      addActivity({ kind: 'system', text: 'Failed to update agent - network error' })
       return false
     }
   }, [rawAgents])
@@ -771,7 +771,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
         setRawAgents(oldAgents)
         setCurrentSeats(oldSeats)
         setAssignments(oldAssignments)
-        addActivity({ kind: 'system', text: 'Failed to delete agent — server error' })
+        addActivity({ kind: 'system', text: 'Failed to delete agent - server error' })
         return false
       }
       return true
@@ -779,7 +779,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       setRawAgents(oldAgents)
       setCurrentSeats(oldSeats)
       setAssignments(oldAssignments)
-      addActivity({ kind: 'system', text: 'Failed to delete agent — network error' })
+      addActivity({ kind: 'system', text: 'Failed to delete agent - network error' })
       return false
     }
   }, [rawAgents, currentSeats, assignments])
@@ -807,7 +807,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         setOfficeSettings(oldSettings)
         setCurrentPolicy(oldPolicy)
-        addActivity({ kind: 'system', text: 'Failed to update settings — server error' })
+        addActivity({ kind: 'system', text: 'Failed to update settings - server error' })
         return false
       }
       addActivity({ kind: 'system', text: 'Office settings updated' })
@@ -815,7 +815,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     } catch {
       setOfficeSettings(oldSettings)
       setCurrentPolicy(oldPolicy)
-      addActivity({ kind: 'system', text: 'Failed to update settings — network error' })
+      addActivity({ kind: 'system', text: 'Failed to update settings - network error' })
       return false
     }
   }, [officeSettings, currentPolicy])
@@ -834,14 +834,14 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) {
         setCurrentRooms(oldRooms)
-        addActivity({ kind: 'system', text: 'Failed to update room — server error' })
+        addActivity({ kind: 'system', text: 'Failed to update room - server error' })
         return false
       }
       addActivity({ kind: 'system', text: `Room updated` })
       return true
     } catch {
       setCurrentRooms(oldRooms)
-      addActivity({ kind: 'system', text: 'Failed to update room — network error' })
+      addActivity({ kind: 'system', text: 'Failed to update room - network error' })
       return false
     }
   }, [currentRooms])
@@ -884,7 +884,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
 
   // ── Messages ──
   const sendMessage = useCallback(async (input: { fromAgentId: string; toAgentId?: string; roomId?: string; message: string }): Promise<boolean> => {
-    // No optimistic insert — SSE message.sent event adds it instantly
+    // No optimistic insert - SSE message.sent event adds it instantly
     try {
       const res = await fetch('/api/office/message', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

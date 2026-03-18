@@ -20,10 +20,10 @@ function agentCard(agent: Record<string, unknown>): string {
   const team = escapeMarkdown(String(agent.team || ''))
   const presence = String(agent.presence || 'off_hours')
   const focus = agent.focus ? `\nFocus: ${escapeMarkdown(String(agent.focus))}` : ''
-  return `${presenceEmoji(presence)} *${name}* — ${role}\nTeam: ${team} \\| Status: ${escapeMarkdown(presence)}${focus}`
+  return `${presenceEmoji(presence)} *${name}* - ${role}\nTeam: ${team} \\| Status: ${escapeMarkdown(presence)}${focus}`
 }
 
-describe('Bot formatters — presenceEmoji', () => {
+describe('Bot formatters - presenceEmoji', () => {
   it('returns correct emoji for each state', () => {
     expect(presenceEmoji('active')).toBe('🟢')
     expect(presenceEmoji('available')).toBe('🔵')
@@ -38,7 +38,7 @@ describe('Bot formatters — presenceEmoji', () => {
   })
 })
 
-describe('Bot formatters — escapeMarkdown', () => {
+describe('Bot formatters - escapeMarkdown', () => {
   it('escapes special characters', () => {
     expect(escapeMarkdown('hello_world')).toBe('hello\\_world')
     expect(escapeMarkdown('*bold*')).toBe('\\*bold\\*')
@@ -51,7 +51,7 @@ describe('Bot formatters — escapeMarkdown', () => {
   })
 })
 
-describe('Bot formatters — agentCard', () => {
+describe('Bot formatters - agentCard', () => {
   it('formats agent with all fields', () => {
     const card = agentCard({
       id: 'forge', name: 'Forge', role: 'Builder', team: 'Build',

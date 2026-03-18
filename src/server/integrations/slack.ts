@@ -1,5 +1,5 @@
 /**
- * Slack integration — outbound only via Incoming Webhook.
+ * Slack integration - outbound only via Incoming Webhook.
  * Sends Block Kit messages for key office events.
  *
  * Env: SLACK_WEBHOOK_URL
@@ -75,7 +75,7 @@ function handleDecisionCreated(event: OfficeEvent & { type: 'decision.created' }
 
 export function init(_ctx: ApiContext): void {
   if (!SLACK_WEBHOOK_URL) {
-    console.log('[slack] SLACK_WEBHOOK_URL not set — integration disabled')
+    console.log('[slack] SLACK_WEBHOOK_URL not set - integration disabled')
     return
   }
   console.log('[slack] integration enabled')
