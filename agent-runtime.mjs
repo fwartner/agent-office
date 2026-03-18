@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 const CLAUDE_CMD = process.env.CLAUDE_CMD || 'claude'
 const MAX_RESULT_LEN = 2000
 
-/** @type {Map<string, { agentId: string, name: string, role: string, currentTask: { assignmentId: string, childProcess: import('child_process').ChildProcess } | null }>} */
+/** @type {Map<string, { agentId: string, name: string, role: string, systemPrompt: string, currentTask: { assignmentId: string, childProcess: import('child_process').ChildProcess } | null }>} */
 const registry = new Map()
 
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -18,10 +18,16 @@ let queueTimer = null
  * @param {string} agentId
  * @param {string} name
  * @param {string} role
+ * @param {string} [systemPrompt]
  */
-export function registerAgent(agentId, name, role) {
-  if (registry.has(agentId)) return
-  registry.set(agentId, { agentId, name, role, currentTask: null })
+export function registerAgent(agentId, name, role, systemPrompt = '') {
+  if (registry.has(agentId)) {
+    // Update systemPrompt if agent already registered
+    const existing = registry.get(agentId)
+    if (existing && systemPrompt) existing.systemPrompt = systemPrompt
+    return
+  }
+  registry.set(agentId, { agentId, name, role, systemPrompt, currentTask: null })
   console.log(`[agent-runtime] Registered agent: ${agentId} (${name})`)
 }
 
@@ -60,7 +66,9 @@ export function dispatchTask(agentId, assignment, callbacks) {
     return false
   }
 
-  const prompt = `You are ${entry.name}, a ${entry.role}.\n\nTask: ${assignment.taskTitle}\n\n${assignment.taskBrief || ''}\n\nProvide your response directly.`
+  const prompt = entry.systemPrompt
+    ? `${entry.systemPrompt}\n\nTask: ${assignment.taskTitle}\n\n${assignment.taskBrief || ''}\n\nProvide your response directly.`
+    : `You are ${entry.name}, a ${entry.role}.\n\nTask: ${assignment.taskTitle}\n\n${assignment.taskBrief || ''}\n\nProvide your response directly.`
 
   const args = [
     '-p', prompt,

@@ -73,11 +73,41 @@ export interface OfficeActivityRecord {
   createdAt: string
 }
 
+export type DecisionStatus = 'proposed' | 'accepted' | 'rejected'
+
 export interface OfficeDecisionRecord {
   id: string
   title: string
   detail: string
+  status: DecisionStatus
+  proposedBy: string | null
   createdAt: string
+}
+
+export interface OfficeMessageRecord {
+  id: string
+  fromAgentId: string
+  toAgentId: string | null
+  roomId: string | null
+  message: string
+  createdAt: string
+}
+
+export interface OfficeWebhookRecord {
+  id: string
+  url: string
+  secret: string
+  events: string[]
+  enabled: boolean
+  createdAt: string
+}
+
+export interface OfficeWebhookLogRecord {
+  id: string
+  webhookId: string
+  event: string
+  statusCode: number | null
+  deliveredAt: string
 }
 
 export interface AgentRuntimeStatus {
@@ -95,4 +125,7 @@ export interface OfficeStateSnapshot {
   assignments: OfficeAssignmentRecord[]
   activityFeed: OfficeActivityRecord[]
   decisions: OfficeDecisionRecord[]
+  messages: OfficeMessageRecord[]
+  webhooks: OfficeWebhookRecord[]
+  webhookLogs: OfficeWebhookLogRecord[]
 }

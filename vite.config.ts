@@ -16,7 +16,11 @@ const MAX_FOCUS_LEN = 500
 const MAX_NAME_LEN = 100
 const MAX_ROLE_LEN = 200
 const VALID_PRESENCE = ['off_hours', 'available', 'active', 'in_meeting', 'paused', 'blocked']
-const AGENT_PATCH_FIELDS = ['presence', 'focus', 'roomId', 'criticalTask', 'collaborationMode']
+const AGENT_PATCH_FIELDS = ['presence', 'focus', 'roomId', 'criticalTask', 'collaborationMode', 'xPct', 'yPct', 'systemPrompt']
+const MAX_SYSTEM_PROMPT_LEN = 5000
+const MAX_MESSAGE_LEN = 2000
+const VALID_DECISION_STATUSES = ['proposed', 'accepted', 'rejected']
+const WEBHOOK_EVENTS = ['agent.presence_changed', 'task.completed', 'task.failed', 'agent.created', 'agent.deleted', 'decision.created']
 const AGENT_ID_RE = /^[a-z0-9-]+$/
 
 function readBody(req: import('http').IncomingMessage, limit: number = MAX_BODY_SIZE): Promise<string> {
@@ -37,7 +41,15 @@ function readBody(req: import('http').IncomingMessage, limit: number = MAX_BODY_
 function sanitizePatch(raw: Record<string, unknown>): Record<string, unknown> {
   const clean: Record<string, unknown> = {}
   for (const key of AGENT_PATCH_FIELDS) {
-    if (key in raw) clean[key] = raw[key]
+    if (key in raw) {
+      if ((key === 'xPct' || key === 'yPct') && typeof raw[key] === 'number') {
+        clean[key] = Math.max(0, Math.min(100, raw[key] as number))
+      } else if (key === 'systemPrompt' && typeof raw[key] === 'string') {
+        clean[key] = (raw[key] as string).slice(0, MAX_SYSTEM_PROMPT_LEN)
+      } else {
+        clean[key] = raw[key]
+      }
+    }
   }
   return clean
 }
@@ -69,6 +81,58 @@ function runLinearBridge(input: {
       }
     })
   })
+}
+
+function dispatchWebhooks(stateFile: string, event: string, payload: unknown) {
+  try {
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+    const webhooks = state.webhooks || []
+    for (const wh of webhooks) {
+      if (!wh.enabled) continue
+      if (wh.events.length > 0 && !wh.events.includes(event)) continue
+      const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() })
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (wh.secret) {
+        // Simple HMAC-like signature using built-in crypto
+        const crypto = require('node:crypto')
+        headers['X-Webhook-Signature'] = crypto.createHmac('sha256', wh.secret).update(body).digest('hex')
+      }
+      fetch(wh.url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10000) })
+        .then(res => {
+          withLock(() => {
+            const s = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+            if (!s.webhookLogs) s.webhookLogs = []
+            s.webhookLogs.unshift({ id: `whl-${Date.now()}`, webhookId: wh.id, event, statusCode: res.status, deliveredAt: new Date().toISOString() })
+            s.webhookLogs = s.webhookLogs.slice(0, 20)
+            fs.writeFileSync(stateFile, JSON.stringify(s, null, 2))
+          })
+        })
+        .catch(() => {
+          // Retry once after 5s
+          setTimeout(() => {
+            fetch(wh.url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10000) })
+              .then(res => {
+                withLock(() => {
+                  const s = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+                  if (!s.webhookLogs) s.webhookLogs = []
+                  s.webhookLogs.unshift({ id: `whl-${Date.now()}`, webhookId: wh.id, event, statusCode: res.status, deliveredAt: new Date().toISOString() })
+                  s.webhookLogs = s.webhookLogs.slice(0, 20)
+                  fs.writeFileSync(stateFile, JSON.stringify(s, null, 2))
+                })
+              })
+              .catch(() => {
+                withLock(() => {
+                  const s = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+                  if (!s.webhookLogs) s.webhookLogs = []
+                  s.webhookLogs.unshift({ id: `whl-${Date.now()}`, webhookId: wh.id, event, statusCode: null, deliveredAt: new Date().toISOString() })
+                  s.webhookLogs = s.webhookLogs.slice(0, 20)
+                  fs.writeFileSync(stateFile, JSON.stringify(s, null, 2))
+                })
+              })
+          }, 5000)
+        })
+    }
+  } catch { /* no webhooks configured */ }
 }
 
 let writeLock = Promise.resolve()
@@ -116,6 +180,8 @@ function createStateCallbacks() {
         assignment.status = 'done'
         assignment.result = result
         assignment.resultAction = 'visible'
+        assignment.completedAt = new Date().toISOString()
+        assignment.durationMs = new Date().getTime() - new Date(assignment.createdAt).getTime()
         assignment.updatedAt = new Date().toISOString()
         // Update agent presence
         const agent = state.agents.find((a: { id: string }) => a.id === assignment.targetAgentId)
@@ -179,6 +245,9 @@ function officeApiPlugin(): Plugin {
             const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
             if (!state.assignments) state.assignments = []
             if (!state.activity) state.activity = []
+            if (!state.decisions) state.decisions = []
+            if (!state.messages) state.messages = []
+            if (!state.webhooks) state.webhooks = []
             state.agentRuntimeStatuses = getAllAgentStatuses()
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify(state))
@@ -218,7 +287,15 @@ function officeApiPlugin(): Plugin {
                 res.end(JSON.stringify({ error: 'Agent not found' }))
                 return
               }
-              for (const [k, v] of Object.entries(patch)) agent[k] = v
+              for (const [k, v] of Object.entries(patch)) {
+                if (k === 'xPct' || k === 'yPct') {
+                  if (!state.agentSeats) state.agentSeats = {}
+                  if (!state.agentSeats[agentMatch[1]]) state.agentSeats[agentMatch[1]] = { xPct: 50, yPct: 50 }
+                  state.agentSeats[agentMatch[1]][k] = v
+                } else {
+                  agent[k] = v
+                }
+              }
               state.lastUpdatedAt = new Date().toISOString()
               fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
               res.setHeader('Content-Type', 'application/json')
@@ -421,7 +498,8 @@ function officeApiPlugin(): Plugin {
                 id: input.id, name: input.name, role: input.role, team: input.team,
                 roomId: input.roomId, presence: input.presence || 'available',
                 focus: input.focus || '', criticalTask: input.criticalTask || false,
-                collaborationMode: input.collaborationMode || ''
+                collaborationMode: input.collaborationMode || '',
+                systemPrompt: input.systemPrompt ? String(input.systemPrompt).slice(0, MAX_SYSTEM_PROMPT_LEN) : ''
               })
               if (!state.agentSeats) state.agentSeats = {}
               state.agentSeats[input.id] = { xPct: 50, yPct: 50 }
@@ -430,7 +508,8 @@ function officeApiPlugin(): Plugin {
               res.statusCode = 201
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ ok: true, id: input.id }))
-              registerAgent(input.id, input.name, input.role)
+              registerAgent(input.id, input.name, input.role, input.systemPrompt || '')
+              dispatchWebhooks(STATE_FILE, 'agent.created', { agentId: input.id, name: input.name })
             })
           } catch (err) {
             res.statusCode = 400
@@ -474,6 +553,7 @@ function officeApiPlugin(): Plugin {
               if (typeof input.focus === 'string') agent.focus = input.focus
               if (typeof input.criticalTask === 'boolean') agent.criticalTask = input.criticalTask
               if (typeof input.collaborationMode === 'string') agent.collaborationMode = input.collaborationMode
+              if (typeof input.systemPrompt === 'string') agent.systemPrompt = input.systemPrompt.slice(0, MAX_SYSTEM_PROMPT_LEN)
               state.lastUpdatedAt = new Date().toISOString()
               fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
               res.setHeader('Content-Type', 'application/json')
@@ -667,6 +747,210 @@ function officeApiPlugin(): Plugin {
           return
         }
 
+        // POST /api/office/decision — create a decision
+        if (req.method === 'POST' && req.url === '/api/office/decision') {
+          try {
+            const input = JSON.parse(await readBody(req))
+            if (typeof input !== 'object' || input === null) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Invalid body' })); return }
+            if (!input.title || !input.detail) { res.statusCode = 400; res.end(JSON.stringify({ error: 'title and detail required' })); return }
+            const decision = {
+              id: `decision-${Date.now()}`, title: String(input.title).slice(0, MAX_TITLE_LEN),
+              detail: String(input.detail).slice(0, MAX_BRIEF_LEN), status: 'proposed',
+              proposedBy: input.proposedBy ? String(input.proposedBy) : null,
+              createdAt: new Date().toISOString()
+            }
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (!state.decisions) state.decisions = []
+              state.decisions.unshift(decision)
+              if (!state.activity) state.activity = []
+              state.activity.unshift({ id: `act-${Date.now()}`, kind: 'decision', text: `Decision proposed: "${decision.title}"`, createdAt: new Date().toISOString() })
+              state.activity = state.activity.slice(0, 100)
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            })
+            dispatchWebhooks(STATE_FILE, 'decision.created', { decision })
+            res.statusCode = 201
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, decision }))
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // PATCH /api/office/decision/:id — update decision
+        const decisionMatch = req.url?.match(/^\/api\/office\/decision\/([a-z0-9-]+)$/)
+        if (req.method === 'PATCH' && decisionMatch) {
+          try {
+            const input = JSON.parse(await readBody(req))
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (!state.decisions) state.decisions = []
+              const decision = state.decisions.find((d: { id: string }) => d.id === decisionMatch[1])
+              if (!decision) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Decision not found' })); return }
+              if (input.status && VALID_DECISION_STATUSES.includes(input.status)) decision.status = input.status
+              if (typeof input.title === 'string') decision.title = input.title.slice(0, MAX_TITLE_LEN)
+              if (typeof input.detail === 'string') decision.detail = input.detail.slice(0, MAX_BRIEF_LEN)
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ ok: true, decision }))
+            })
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // POST /api/office/message — send a message
+        if (req.method === 'POST' && req.url === '/api/office/message') {
+          try {
+            const input = JSON.parse(await readBody(req))
+            if (!input.fromAgentId || !input.message) { res.statusCode = 400; res.end(JSON.stringify({ error: 'fromAgentId and message required' })); return }
+            const msg = {
+              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              fromAgentId: String(input.fromAgentId),
+              toAgentId: input.toAgentId ? String(input.toAgentId) : null,
+              roomId: input.roomId ? String(input.roomId) : null,
+              message: String(input.message).slice(0, MAX_MESSAGE_LEN),
+              createdAt: new Date().toISOString()
+            }
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (!state.messages) state.messages = []
+              state.messages.push(msg)
+              state.messages = state.messages.slice(-200)
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            })
+            res.statusCode = 201
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, message: msg }))
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // GET /api/office/messages?room=X or ?agent=X
+        if (req.method === 'GET' && req.url?.startsWith('/api/office/messages')) {
+          try {
+            const url = new URL(req.url, 'http://localhost')
+            const roomId = url.searchParams.get('room')
+            const agentId = url.searchParams.get('agent')
+            const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+            let msgs = state.messages || []
+            if (roomId) msgs = msgs.filter((m: { roomId: string | null }) => m.roomId === roomId)
+            if (agentId) msgs = msgs.filter((m: { fromAgentId: string; toAgentId: string | null }) => m.fromAgentId === agentId || m.toAgentId === agentId)
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ messages: msgs.slice(-50) }))
+          } catch (err) { res.statusCode = 500; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // POST /api/office/room — create a new room
+        if (req.method === 'POST' && req.url === '/api/office/room') {
+          try {
+            const input = JSON.parse(await readBody(req))
+            const required = ['id', 'name', 'team', 'purpose']
+            const missing = required.filter(f => !input[f])
+            if (missing.length > 0) { res.statusCode = 400; res.end(JSON.stringify({ error: `Missing: ${missing.join(', ')}` })); return }
+            if (!AGENT_ID_RE.test(input.id)) { res.statusCode = 400; res.end(JSON.stringify({ error: 'id must be kebab-case' })); return }
+            if (!input.zone || typeof input.zone.x !== 'number') { res.statusCode = 400; res.end(JSON.stringify({ error: 'zone with x,y,w,h required' })); return }
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (state.rooms.find((r: { id: string }) => r.id === input.id)) { res.statusCode = 409; res.end(JSON.stringify({ error: 'Room exists' })); return }
+              state.rooms.push({
+                id: input.id, name: String(input.name).slice(0, MAX_NAME_LEN),
+                team: String(input.team).slice(0, MAX_ROLE_LEN), purpose: String(input.purpose).slice(0, MAX_BRIEF_LEN),
+                agents: [], zone: { x: input.zone.x, y: input.zone.y, w: input.zone.w, h: input.zone.h }
+              })
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+              res.statusCode = 201
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ ok: true, id: input.id }))
+            })
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // DELETE /api/office/room/:id — delete a room
+        if (req.method === 'DELETE' && roomMatch) {
+          try {
+            const roomId = roomMatch[1]
+            if (roomId === 'commons') { res.statusCode = 400; res.end(JSON.stringify({ error: 'Cannot delete Commons' })); return }
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              const idx = state.rooms.findIndex((r: { id: string }) => r.id === roomId)
+              if (idx === -1) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Room not found' })); return }
+              state.rooms.splice(idx, 1)
+              // Move agents to commons
+              for (const agent of state.agents) {
+                if (agent.roomId === roomId) agent.roomId = 'commons'
+              }
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ ok: true }))
+            })
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // POST /api/office/webhook — create webhook
+        if (req.method === 'POST' && req.url === '/api/office/webhook') {
+          try {
+            const input = JSON.parse(await readBody(req))
+            if (!input.url) { res.statusCode = 400; res.end(JSON.stringify({ error: 'url required' })); return }
+            const webhook = {
+              id: `webhook-${Date.now()}`, url: String(input.url),
+              secret: input.secret ? String(input.secret) : '', events: Array.isArray(input.events) ? input.events.filter((e: string) => WEBHOOK_EVENTS.includes(e)) : [],
+              enabled: true, createdAt: new Date().toISOString()
+            }
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (!state.webhooks) state.webhooks = []
+              state.webhooks.push(webhook)
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            })
+            res.statusCode = 201
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, webhook }))
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // DELETE /api/office/webhook/:id
+        const webhookMatch = req.url?.match(/^\/api\/office\/webhook\/([a-z0-9-]+)$/)
+        if (req.method === 'DELETE' && webhookMatch) {
+          try {
+            await withLock(() => {
+              const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+              if (!state.webhooks) state.webhooks = []
+              state.webhooks = state.webhooks.filter((w: { id: string }) => w.id !== webhookMatch[1])
+              state.lastUpdatedAt = new Date().toISOString()
+              fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+            })
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true }))
+          } catch (err) { res.statusCode = 400; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
+        // GET /api/office/assignments — query with filters (history)
+        if (req.method === 'GET' && req.url?.startsWith('/api/office/assignments')) {
+          try {
+            const url = new URL(req.url, 'http://localhost')
+            const status = url.searchParams.get('status')
+            const agent = url.searchParams.get('agent')
+            const limit = Math.min(Number(url.searchParams.get('limit') || 100), 500)
+            const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+            let list = state.assignments || []
+            if (status) list = list.filter((a: { status: string }) => a.status === status)
+            if (agent) list = list.filter((a: { targetAgentId: string }) => a.targetAgentId === agent)
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ assignments: list.slice(0, limit) }))
+          } catch (err) { res.statusCode = 500; res.end(JSON.stringify({ error: String(err) })) }
+          return
+        }
+
         next()
       })
 
@@ -675,7 +959,7 @@ function officeApiPlugin(): Plugin {
         const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
         if (state.agents) {
           for (const agent of state.agents) {
-            registerAgent(agent.id, agent.name, agent.role)
+            registerAgent(agent.id, agent.name, agent.role, agent.systemPrompt || '')
           }
         }
         // Re-queue any active assignments (process died on restart)

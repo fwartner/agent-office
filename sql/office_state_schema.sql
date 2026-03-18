@@ -13,6 +13,7 @@ create table if not exists office_agents (
   office_visible boolean not null default true,
   character_id text,
   sprite_sheet text,
+  system_prompt text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -61,6 +62,8 @@ create table if not exists office_assignments (
   status text not null check (status in ('queued','routed','active','done','blocked')),
   routing_target text not null check (routing_target in ('agent_runtime','work_tracker','both')),
   source text not null default 'office_ui',
+  completed_at timestamptz,
+  duration_ms integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -78,12 +81,43 @@ create table if not exists office_decisions (
   id text primary key,
   title text not null,
   detail text not null,
+  status text not null default 'proposed' check (status in ('proposed','accepted','rejected')),
+  proposed_by text references office_agents(id) on delete set null,
   created_at timestamptz not null default now()
+);
+
+create table if not exists office_messages (
+  id text primary key,
+  from_agent_id text not null references office_agents(id) on delete cascade,
+  to_agent_id text references office_agents(id) on delete cascade,
+  room_id text references office_rooms(id) on delete cascade,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists office_webhooks (
+  id text primary key,
+  url text not null,
+  secret text not null default '',
+  events text[] not null default '{}',
+  enabled boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists office_webhook_logs (
+  id text primary key,
+  webhook_id text not null references office_webhooks(id) on delete cascade,
+  event text not null,
+  status_code integer,
+  delivered_at timestamptz not null default now()
 );
 
 create index if not exists office_activity_feed_created_at_idx on office_activity_feed (created_at desc);
 create index if not exists office_assignments_target_agent_id_idx on office_assignments (target_agent_id, created_at desc);
 create index if not exists office_world_entities_room_id_idx on office_world_entities (room_id);
+create index if not exists office_messages_room_id_idx on office_messages (room_id, created_at desc);
+create index if not exists office_messages_to_agent_idx on office_messages (to_agent_id, created_at desc);
+create index if not exists office_webhook_logs_webhook_id_idx on office_webhook_logs (webhook_id, delivered_at desc);
 
 insert into office_rooms (id, name, team, purpose, zone_x, zone_y, zone_w, zone_h)
 values
@@ -124,10 +158,10 @@ values
   ('morrow', 'signal-room', 65, 55, 'down')
 on conflict (agent_id) do nothing;
 
-insert into office_decisions (id, title, detail)
+insert into office_decisions (id, title, detail, status, proposed_by)
 values
-  ('decision-mvp-scope', 'World-first MVP shell', 'The Virtual Office MVP is a world-first pixel-office shell, not a dashboard.'),
-  ('decision-live-state', 'Live office state', 'The office should refresh every few seconds against the central Postgres state backend.')
+  ('decision-mvp-scope', 'World-first MVP shell', 'The Virtual Office MVP is a world-first pixel-office shell, not a dashboard.', 'accepted', 'prism'),
+  ('decision-live-state', 'Live office state', 'The office should refresh every few seconds against the central Postgres state backend.', 'accepted', 'northstar')
 on conflict (id) do nothing;
 
 commit;

@@ -1,9 +1,244 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { type PresenceState, type Room, defaultPresenceColors } from './data'
-import { useOffice, type OfficeAgent, type AgentCreateInput, type AgentUpdateInput } from './office-provider'
+import { useOffice, type OfficeAgent, type AgentCreateInput, type AgentUpdateInput, type ToastItem } from './office-provider'
 import { characterSprites, getCharacterSprite, getSpriteAnimData, type CharacterSpriteSet, type SpriteAnimData } from './world'
 import { WelcomeOnboarding } from './WelcomeOnboarding'
 import { SettingsPanel } from './SettingsPanel'
+
+// ── Toast notification component ─────────────────────
+function ToastContainer({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: string) => void }) {
+  if (toasts.length === 0) return null
+  return (
+    <div className="toast-container" aria-live="polite">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast toast-${t.kind}`} role="alert">
+          <span className="toast-message">{t.message}</span>
+          <button className="toast-dismiss" onClick={() => onDismiss(t.id)} aria-label="Dismiss">&times;</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Decision card component ──────────────────────────
+function DecisionCard({ decision, agents, onUpdate }: {
+  decision: { id: string; title: string; detail: string; status: string; proposedBy: string | null; createdAt: string }
+  agents: OfficeAgent[]
+  onUpdate: (id: string, input: { status?: string }) => Promise<boolean>
+}) {
+  const proposer = decision.proposedBy ? agents.find(a => a.id === decision.proposedBy) : null
+  const statusColors: Record<string, string> = { proposed: '#ffd479', accepted: '#78f7b5', rejected: '#ff8b8b' }
+  return (
+    <div className="decision-card" style={{ borderLeftColor: statusColors[decision.status] || '#8792a8' }}>
+      <div className="decision-head">
+        <strong>{decision.title}</strong>
+        <span className="decision-status" style={{ color: statusColors[decision.status] }}>{decision.status}</span>
+      </div>
+      <p className="decision-detail">{decision.detail}</p>
+      <div className="decision-meta">
+        {proposer && <span>Proposed by {proposer.name}</span>}
+        <span>{safeTime(decision.createdAt)} · {relativeTime(decision.createdAt)}</span>
+      </div>
+      {decision.status === 'proposed' && (
+        <div className="decision-actions">
+          <button className="decision-accept" onClick={() => onUpdate(decision.id, { status: 'accepted' })}>Accept</button>
+          <button className="decision-reject" onClick={() => onUpdate(decision.id, { status: 'rejected' })}>Reject</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Decision create form ─────────────────────────────
+function DecisionForm({ agents, onSubmit, onClose }: {
+  agents: OfficeAgent[]
+  onSubmit: (input: { title: string; detail: string; proposedBy?: string }) => Promise<boolean>
+  onClose: () => void
+}) {
+  const titleRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { titleRef.current?.focus() }, [])
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const fd = new FormData(e.target as HTMLFormElement)
+    await onSubmit({
+      title: fd.get('title') as string,
+      detail: fd.get('detail') as string,
+      proposedBy: (fd.get('proposedBy') as string) || undefined
+    })
+    onClose()
+  }
+
+  return (
+    <form className="assign-form" onSubmit={handleSubmit}>
+      <div className="assign-form-head">
+        <strong>New Decision</strong>
+        <button type="button" className="assign-close" aria-label="Close" onClick={onClose}>&times;</button>
+      </div>
+      <label htmlFor="decision-title" className="visually-hidden">Title</label>
+      <input ref={titleRef} id="decision-title" name="title" placeholder="Decision title" required className="assign-input" />
+      <label htmlFor="decision-detail" className="visually-hidden">Detail</label>
+      <textarea id="decision-detail" name="detail" placeholder="Decision detail" rows={3} required className="assign-input" />
+      <label htmlFor="decision-proposer" className="visually-hidden">Proposed by</label>
+      <select id="decision-proposer" name="proposedBy" className="assign-select">
+        <option value="">No proposer</option>
+        {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <button type="submit" className="assign-submit">Propose decision</button>
+    </form>
+  )
+}
+
+// ── Chat message component ───────────────────────────
+function ChatPanel({ messages, agents, rooms, currentRoomId, onSend }: {
+  messages: Array<{ id: string; fromAgentId: string; toAgentId: string | null; roomId: string | null; message: string; createdAt: string }>
+  agents: OfficeAgent[]
+  rooms: Array<{ id: string; name: string }>
+  currentRoomId: string | null
+  onSend: (input: { fromAgentId: string; roomId?: string; message: string }) => Promise<boolean>
+}) {
+  const [selectedRoom, setSelectedRoom] = useState(currentRoomId || rooms[0]?.id || '')
+  const roomMsgs = messages.filter(m => m.roomId === selectedRoom).slice(-30)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { listRef.current?.scrollTo(0, listRef.current.scrollHeight) }, [roomMsgs.length])
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const fd = new FormData(e.target as HTMLFormElement)
+    const msg = (fd.get('message') as string)?.trim()
+    const from = fd.get('fromAgent') as string
+    if (!msg || !from) return
+    onSend({ fromAgentId: from, roomId: selectedRoom, message: msg })
+    ;(e.target as HTMLFormElement).reset()
+  }
+
+  return (
+    <div className="chat-panel" role="tabpanel">
+      <div className="chat-room-select">
+        <label htmlFor="chat-room" className="visually-hidden">Room</label>
+        <select id="chat-room" className="assign-select" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
+          {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </div>
+      <div className="chat-messages" ref={listRef}>
+        {roomMsgs.length === 0 && <p className="feed-empty">No messages in this room</p>}
+        {roomMsgs.map(m => {
+          const sender = agents.find(a => a.id === m.fromAgentId)
+          return (
+            <div key={m.id} className="chat-msg">
+              <strong className="chat-sender">{sender?.name ?? m.fromAgentId}</strong>
+              <span className="chat-text">{m.message}</span>
+              <span className="chat-time">{safeTime(m.createdAt)}</span>
+            </div>
+          )
+        })}
+      </div>
+      {agents.length > 0 && (
+        <form className="chat-form" onSubmit={handleSubmit}>
+          <select name="fromAgent" className="assign-select chat-agent-select">
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <input name="message" placeholder="Type a message..." className="assign-input chat-input" autoComplete="off" />
+          <button type="submit" className="assign-submit chat-send">Send</button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+// ── Task History with analytics ──────────────────────
+function TaskHistoryPanel({ assignments, agents }: {
+  assignments: Array<{ id: string; targetAgentId: string; taskTitle: string; status: string; priority: string; createdAt: string; completedAt?: string; durationMs?: number; result?: string }>
+  agents: OfficeAgent[]
+}) {
+  const [filterAgent, setFilterAgent] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+
+  const filtered = assignments.filter(a => {
+    if (filterAgent && a.targetAgentId !== filterAgent) return false
+    if (filterStatus && a.status !== filterStatus) return false
+    return true
+  })
+
+  // Stats
+  const done = assignments.filter(a => a.status === 'done')
+  const avgDuration = done.length > 0
+    ? Math.round(done.reduce((s, a) => s + (a.durationMs || 0), 0) / done.length / 1000)
+    : 0
+
+  // Tasks per agent for bar chart
+  const agentCounts: Record<string, number> = {}
+  for (const a of done) {
+    agentCounts[a.targetAgentId] = (agentCounts[a.targetAgentId] || 0) + 1
+  }
+  const maxCount = Math.max(1, ...Object.values(agentCounts))
+
+  function exportData() {
+    const csv = ['id,agent,title,status,priority,created,completed']
+    for (const a of filtered) {
+      csv.push(`${a.id},${a.targetAgentId},"${a.taskTitle}",${a.status},${a.priority},${a.createdAt},${a.completedAt || ''}`)
+    }
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url; link.download = 'task-history.csv'; link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="history-panel">
+      <div className="history-stats">
+        <div className="stat-card"><span className="stat-value">{done.length}</span><span className="stat-label">Completed</span></div>
+        <div className="stat-card"><span className="stat-value">{avgDuration}s</span><span className="stat-label">Avg time</span></div>
+        <div className="stat-card"><span className="stat-value">{assignments.filter(a => a.status === 'blocked').length}</span><span className="stat-label">Blocked</span></div>
+      </div>
+      {Object.keys(agentCounts).length > 0 && (
+        <div className="history-chart">
+          {Object.entries(agentCounts).map(([agentId, count]) => {
+            const agent = agents.find(a => a.id === agentId)
+            return (
+              <div key={agentId} className="chart-bar-row">
+                <span className="chart-label">{agent?.name ?? agentId}</span>
+                <div className="chart-bar" style={{ width: `${(count / maxCount) * 100}%` }} />
+                <span className="chart-value">{count}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div className="history-filters">
+        <select className="assign-select" value={filterAgent} onChange={e => setFilterAgent(e.target.value)}>
+          <option value="">All agents</option>
+          {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <select className="assign-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="done">Done</option>
+          <option value="blocked">Blocked</option>
+          <option value="active">Active</option>
+          <option value="queued">Queued</option>
+        </select>
+        <button className="agent-edit-btn" onClick={exportData}>Export CSV</button>
+      </div>
+      {filtered.length === 0 && <p className="feed-empty">No matching tasks</p>}
+      {filtered.slice(0, 50).map(a => {
+        const agent = agents.find(ag => ag.id === a.targetAgentId)
+        return (
+          <div key={a.id} className={`task-card task-${a.priority} ${a.status === 'done' ? 'task-done' : ''}`}>
+            <div className="task-head"><strong>{a.taskTitle}</strong><span className="task-priority">{a.priority}</span></div>
+            <div className="task-meta">
+              <span>{agent?.name ?? a.targetAgentId}</span>
+              <span>{a.status}</span>
+              {a.completedAt && <span>{relativeTime(a.completedAt)}</span>}
+              {a.durationMs && <span>{Math.round(a.durationMs / 1000)}s</span>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 const OFFICE_MAP = '/assets/pixelart/office-map.png'
 const MAP_NATIVE_W = 640
@@ -86,13 +321,15 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 }
 
 // ── Agent sprite on the map ──────────────────────────
-function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHover }: {
+function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHover, onDragStart, isDragTarget }: {
   agent: OfficeAgent
   presenceColors: Record<PresenceState, string>
   onClick: () => void
   selected: boolean
   hovered: boolean
   onHover: (hovering: boolean) => void
+  onDragStart?: (e: React.PointerEvent) => void
+  isDragTarget?: boolean
 }) {
   const { rooms, agentSeats } = useOffice()
   const [spriteFailed, setSpriteFailed] = useState(false)
@@ -112,7 +349,7 @@ function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHove
 
   return (
     <div
-      className={`agent-sprite ${selected ? 'selected' : ''} ${isIdle ? 'idle' : ''}`}
+      className={`agent-sprite ${selected ? 'selected' : ''} ${isIdle ? 'idle' : ''} ${isDragTarget ? 'dragging-agent' : ''}`}
       style={{
         left: `${room.zone.x + seat.xPct * room.zone.w / 100}%`,
         top: `${room.zone.y + seat.yPct * room.zone.h / 100}%`,
@@ -126,6 +363,7 @@ function AgentSprite({ agent, presenceColors, onClick, selected, hovered, onHove
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
+      onPointerDown={onDragStart}
     >
       {showBubble && (
         <div aria-hidden="true">
@@ -471,7 +709,7 @@ function AgentForm({ agent, onClose }: { agent?: OfficeAgent; onClose: () => voi
 // ── Main app ─────────────────────────────────────────
 export function App() {
   const office = useOffice()
-  const { agents, rooms, workdayPolicy, officeSettings, activity, assignments, agentRuntimeStatuses, selectedAgentId, selectAgent, berlinTimeLabel, withinWorkday, dataSource, connectionError, deleteAgent } = office
+  const { agents, rooms, workdayPolicy, officeSettings, activity, assignments, agentRuntimeStatuses, decisions, messages, webhooks, toasts, selectedAgentId, selectAgent, berlinTimeLabel, withinWorkday, dataSource, connectionError, deleteAgent, createDecision, updateDecision, sendMessage, dismissToast, updateAgentPosition } = office
 
   const presenceColors: Record<PresenceState, string> = officeSettings.theme?.presenceColors ?? defaultPresenceColors
 
@@ -479,12 +717,15 @@ export function App() {
   const [showAssignForm, setShowAssignForm] = useState(false)
   const [showAgentForm, setShowAgentForm] = useState<'create' | 'edit' | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [sideTab, setSideTab] = useState<'roster' | 'activity' | 'tasks' | 'settings'>('roster')
+  const [sideTab, setSideTab] = useState<'roster' | 'activity' | 'tasks' | 'decisions' | 'chat' | 'history' | 'settings'>('roster')
+  const [showDecisionForm, setShowDecisionForm] = useState(false)
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null)
   const [sheetSnap, setSheetSnap] = useState<'collapsed' | 'half' | 'full'>('collapsed')
   const [isDragging, setIsDragging] = useState(false)
+  const [draggingAgentId, setDraggingAgentId] = useState<string | null>(null)
+  const dragAgentStart = useRef<{ x: number; y: number; agentXPct: number; agentYPct: number } | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const dragStartY = useRef(0)
   const dragStartHeight = useRef(0)
@@ -619,6 +860,51 @@ export function App() {
   const mapW = MAP_NATIVE_W * mapScale
   const mapH = MAP_NATIVE_H * mapScale
 
+  // Agent drag-and-drop handlers
+  const handleAgentDragStart = useCallback((agentId: string, e: React.PointerEvent) => {
+    const seat = office.agentSeats[agentId]
+    if (!seat) return
+    setDraggingAgentId(agentId)
+    dragAgentStart.current = { x: e.clientX, y: e.clientY, agentXPct: seat.xPct, agentYPct: seat.yPct }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }, [office.agentSeats])
+
+  useEffect(() => {
+    if (!draggingAgentId) return
+    const mapContainer = mapScrollRef.current?.querySelector('.map-container')
+    if (!mapContainer) return
+
+    function onMove(e: PointerEvent) {
+      if (!dragAgentStart.current || !draggingAgentId) return
+      const rect = mapContainer!.getBoundingClientRect()
+      const xPctMap = ((e.clientX - rect.left) / rect.width) * 100
+      const yPctMap = ((e.clientY - rect.top) / rect.height) * 100
+      // Find which room the cursor is in
+      const agent = agents.find(a => a.id === draggingAgentId)
+      if (!agent) return
+      const room = rooms.find(r => r.id === agent.roomId)
+      if (!room) return
+      // Convert map pct to room-relative pct
+      const relX = Math.max(0, Math.min(100, ((xPctMap - room.zone.x) / room.zone.w) * 100))
+      const relY = Math.max(0, Math.min(100, ((yPctMap - room.zone.y) / room.zone.h) * 100))
+      // Snap to 10% grid
+      const snappedX = Math.round(relX / 10) * 10
+      const snappedY = Math.round(relY / 10) * 10
+      updateAgentPosition(draggingAgentId, snappedX, snappedY)
+    }
+
+    function onUp() {
+      // Check if dropped in a different room
+      setDraggingAgentId(null)
+      dragAgentStart.current = null
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
+  }, [draggingAgentId, agents, rooms, updateAgentPosition])
+
   function handleRoomClick(roomId: string) {
     selectAgent(null)
     setSelectedRoomId(selectedRoomId === roomId ? null : roomId)
@@ -677,6 +963,8 @@ export function App() {
                   selected={selectedAgentId === agent.id}
                   hovered={hoveredAgent === agent.id}
                   onHover={h => setHoveredAgent(h ? agent.id : null)}
+                  onDragStart={e => handleAgentDragStart(agent.id, e)}
+                  isDragTarget={draggingAgentId === agent.id}
                 />
               ))}
             </div>
@@ -733,9 +1021,14 @@ export function App() {
             <button className={`side-tab ${sideTab === 'roster' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'roster'} onClick={() => setSideTab('roster')}>Agents</button>
             <button className={`side-tab ${sideTab === 'activity' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'activity'} onClick={() => setSideTab('activity')}>Feed</button>
             <button className={`side-tab ${sideTab === 'tasks' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'tasks'} onClick={() => setSideTab('tasks')}>
-              All Tasks{assignments.length > 0 ? ` (${assignments.length})` : ''}
+              Tasks{assignments.length > 0 ? ` (${assignments.length})` : ''}
               {pendingResultCount > 0 && <span className="result-badge">{pendingResultCount}</span>}
             </button>
+            <button className={`side-tab ${sideTab === 'decisions' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'decisions'} onClick={() => setSideTab('decisions')}>
+              Decisions{decisions.length > 0 ? ` (${decisions.length})` : ''}
+            </button>
+            <button className={`side-tab ${sideTab === 'chat' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'chat'} onClick={() => setSideTab('chat')}>Chat</button>
+            <button className={`side-tab ${sideTab === 'history' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'history'} onClick={() => setSideTab('history')}>History</button>
             <button className={`side-tab ${sideTab === 'settings' ? 'active' : ''}`} role="tab" aria-selected={sideTab === 'settings'} onClick={() => setSideTab('settings')}>Settings</button>
           </div>
 

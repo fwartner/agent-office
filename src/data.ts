@@ -16,6 +16,7 @@ export interface AgentCard {
   focus: string
   criticalTask: boolean
   collaborationMode: string
+  systemPrompt?: string
   /** Is this agent an external collaborator (not firm office staff)? */
   external?: boolean
 }
@@ -69,12 +70,52 @@ export const defaultSettings: OfficeSettings = {
   }
 }
 
+export type DecisionStatus = 'proposed' | 'accepted' | 'rejected'
+
+export interface DecisionRecord {
+  id: string
+  title: string
+  detail: string
+  status: DecisionStatus
+  proposedBy: string | null
+  createdAt: string
+}
+
+export interface MessageRecord {
+  id: string
+  fromAgentId: string
+  toAgentId: string | null
+  roomId: string | null
+  message: string
+  createdAt: string
+}
+
+export interface WebhookRecord {
+  id: string
+  url: string
+  secret: string
+  events: string[]
+  enabled: boolean
+  createdAt: string
+}
+
+export interface WebhookLogRecord {
+  id: string
+  webhookId: string
+  event: string
+  statusCode: number | null
+  deliveredAt: string
+}
+
 export interface OfficeSnapshot {
   agents: AgentCard[]
   rooms: Room[]
   agentSeats: Record<string, { xPct: number; yPct: number }>
   workdayPolicy: WorkdayPolicy
   settings?: OfficeSettings
+  decisions?: DecisionRecord[]
+  messages?: MessageRecord[]
+  webhooks?: WebhookRecord[]
   source: 'seed' | 'file' | 'postgres'
   lastUpdatedAt: string
 }

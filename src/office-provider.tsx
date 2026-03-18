@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
-import { agents as seedAgents, rooms as seedRooms, agentSeats as seedSeats, workdayPolicy as seedPolicy, defaultSettings, type AgentCard, type PresenceState, type Room, type WorkdayPolicy, type OfficeSettings, type RoomUpdateInput } from './data'
+import { agents as seedAgents, rooms as seedRooms, agentSeats as seedSeats, workdayPolicy as seedPolicy, defaultSettings, type AgentCard, type PresenceState, type Room, type WorkdayPolicy, type OfficeSettings, type RoomUpdateInput, type DecisionRecord, type MessageRecord, type WebhookRecord, type WebhookLogRecord } from './data'
 import { characterSprites, worldEntities, type ActivityItem, type AssignmentRecord } from './world'
 import type { AgentRuntimeStatus } from './office-state'
 
@@ -11,11 +11,20 @@ export interface OfficeAgent extends AgentCard {
 export interface AgentCreateInput {
   id: string; name: string; role: string; team: string; roomId: string
   presence?: PresenceState; focus?: string; criticalTask?: boolean; collaborationMode?: string
+  systemPrompt?: string
 }
 
 export interface AgentUpdateInput {
   name?: string; role?: string; team?: string; roomId?: string
   presence?: PresenceState; focus?: string; criticalTask?: boolean; collaborationMode?: string
+  systemPrompt?: string
+}
+
+export interface ToastItem {
+  id: string
+  message: string
+  kind: 'info' | 'success' | 'warning' | 'error'
+  createdAt: number
 }
 
 interface OfficeState {
@@ -27,6 +36,10 @@ interface OfficeState {
   assignments: AssignmentRecord[]
   activity: ActivityItem[]
   agentRuntimeStatuses: AgentRuntimeStatus[]
+  decisions: DecisionRecord[]
+  messages: MessageRecord[]
+  webhooks: WebhookRecord[]
+  toasts: ToastItem[]
   selectedAgentId: string | null
   berlinTimeLabel: string
   withinWorkday: boolean
@@ -48,6 +61,15 @@ interface OfficeState {
   deleteAgent: (id: string) => Promise<boolean>
   updateSettings: (patch: Partial<OfficeSettings> & { workdayPolicy?: Partial<WorkdayPolicy> }) => Promise<boolean>
   updateRoom: (id: string, input: RoomUpdateInput) => Promise<boolean>
+  createDecision: (input: { title: string; detail: string; proposedBy?: string }) => Promise<boolean>
+  updateDecision: (id: string, input: { status?: string; title?: string; detail?: string }) => Promise<boolean>
+  sendMessage: (input: { fromAgentId: string; toAgentId?: string; roomId?: string; message: string }) => Promise<boolean>
+  createRoom: (input: { id: string; name: string; team: string; purpose: string; zone: { x: number; y: number; w: number; h: number } }) => Promise<boolean>
+  deleteRoom: (id: string) => Promise<boolean>
+  createWebhook: (input: { url: string; secret?: string; events: string[] }) => Promise<boolean>
+  deleteWebhook: (id: string) => Promise<boolean>
+  dismissToast: (id: string) => void
+  updateAgentPosition: (agentId: string, xPct: number, yPct: number, roomId?: string) => void
 }
 
 const OfficeContext = createContext<OfficeState | null>(null)
@@ -131,6 +153,9 @@ interface ApiSnapshot {
   activity?: ActivityItem[]
   assignments?: AssignmentRecord[]
   agentRuntimeStatuses?: AgentRuntimeStatus[]
+  decisions?: DecisionRecord[]
+  messages?: MessageRecord[]
+  webhooks?: WebhookRecord[]
   source: string
   lastUpdatedAt: string
 }
@@ -190,8 +215,33 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([])
   const [agentRuntimeStatuses, setAgentRuntimeStatuses] = useState<AgentRuntimeStatus[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>(INITIAL_ACTIVITY)
+  const [decisions, setDecisions] = useState<DecisionRecord[]>([])
+  const [messages, setMessages] = useState<MessageRecord[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookRecord[]>([])
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const prevSnapshotRef = useRef<{ assignments: AssignmentRecord[]; agents: AgentCard[] }>({ assignments: [], agents: [] })
   const wasLive = useRef(false)
   const consecutiveFailures = useRef(0)
+
+  // Toast helpers
+  const addToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
+    const toast: ToastItem = { id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, message, kind, createdAt: Date.now() }
+    setToasts(prev => [...prev, toast].slice(-5))
+  }, [])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
+
+  // Auto-dismiss toasts after 5s
+  useEffect(() => {
+    if (toasts.length === 0) return
+    const timer = setInterval(() => {
+      const now = Date.now()
+      setToasts(prev => prev.filter(t => now - t.createdAt < 5000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [toasts.length])
 
   // Poll for live state from API with exponential backoff
   useEffect(() => {
@@ -234,6 +284,35 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
         if (data.agentRuntimeStatuses) {
           setAgentRuntimeStatuses(data.agentRuntimeStatuses)
         }
+        if (data.decisions) {
+          setDecisions(data.decisions)
+        }
+        if (data.messages) {
+          setMessages(data.messages)
+        }
+        if (data.webhooks) {
+          setWebhooks(data.webhooks)
+        }
+
+        // Notification diffing — detect important changes
+        if (wasLive.current && data.assignments) {
+          const prevAssignments = prevSnapshotRef.current.assignments
+          for (const a of data.assignments) {
+            const prev = prevAssignments.find(p => p.id === a.id)
+            if (prev && prev.status !== a.status) {
+              if (a.status === 'done') addToast(`Task "${a.taskTitle}" completed`, 'success')
+              if (a.status === 'blocked') addToast(`Task "${a.taskTitle}" blocked`, 'warning')
+            }
+          }
+          for (const agent of data.agents) {
+            const prev = prevSnapshotRef.current.agents.find(p => p.id === agent.id)
+            if (prev && prev.presence !== agent.presence && agent.presence === 'blocked') {
+              addToast(`${agent.name} is now blocked`, 'warning')
+            }
+          }
+        }
+        prevSnapshotRef.current = { assignments: data.assignments ?? [], agents: data.agents }
+
         if (!wasLive.current) {
           wasLive.current = true
           setDataSource('live')
@@ -575,6 +654,125 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     }
   }, [currentRooms])
 
+  // ── Decisions CRUD ──
+  const createDecision = useCallback(async (input: { title: string; detail: string; proposedBy?: string }): Promise<boolean> => {
+    const optimistic: DecisionRecord = {
+      id: `decision-${Date.now()}`, title: input.title, detail: input.detail,
+      status: 'proposed', proposedBy: input.proposedBy ?? null, createdAt: new Date().toISOString()
+    }
+    setDecisions(prev => [optimistic, ...prev])
+    addActivity({ kind: 'decision', text: `Decision proposed: "${input.title}"` })
+    addToast(`Decision proposed: "${input.title}"`, 'info')
+    try {
+      const res = await fetch('/api/office/decision', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      })
+      if (!res.ok) { setDecisions(prev => prev.filter(d => d.id !== optimistic.id)); return false }
+      return true
+    } catch { setDecisions(prev => prev.filter(d => d.id !== optimistic.id)); return false }
+  }, [addToast])
+
+  const updateDecision = useCallback(async (id: string, input: { status?: string; title?: string; detail?: string }): Promise<boolean> => {
+    const old = decisions.find(d => d.id === id)
+    setDecisions(prev => prev.map(d => d.id === id ? { ...d, ...input } as DecisionRecord : d))
+    if (input.status) {
+      addActivity({ kind: 'decision', text: `Decision "${old?.title ?? id}" ${input.status}` })
+      addToast(`Decision ${input.status}: "${old?.title ?? id}"`, input.status === 'accepted' ? 'success' : 'info')
+    }
+    try {
+      const res = await fetch(`/api/office/decision/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      })
+      if (!res.ok) { if (old) setDecisions(prev => prev.map(d => d.id === id ? old : d)); return false }
+      return true
+    } catch { if (old) setDecisions(prev => prev.map(d => d.id === id ? old : d)); return false }
+  }, [decisions, addToast])
+
+  // ── Messages ──
+  const sendMessage = useCallback(async (input: { fromAgentId: string; toAgentId?: string; roomId?: string; message: string }): Promise<boolean> => {
+    const optimistic: MessageRecord = {
+      id: `msg-${Date.now()}`, fromAgentId: input.fromAgentId,
+      toAgentId: input.toAgentId ?? null, roomId: input.roomId ?? null,
+      message: input.message, createdAt: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, optimistic].slice(-100))
+    try {
+      const res = await fetch('/api/office/message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      })
+      return res.ok
+    } catch { return false }
+  }, [])
+
+  // ── Room CRUD ──
+  const createRoom = useCallback(async (input: { id: string; name: string; team: string; purpose: string; zone: { x: number; y: number; w: number; h: number } }): Promise<boolean> => {
+    const newRoom: Room = { ...input, agents: [] }
+    setCurrentRooms(prev => [...prev, newRoom])
+    addActivity({ kind: 'system', text: `Room "${input.name}" created` })
+    try {
+      const res = await fetch('/api/office/room', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      })
+      if (!res.ok) { setCurrentRooms(prev => prev.filter(r => r.id !== input.id)); return false }
+      return true
+    } catch { setCurrentRooms(prev => prev.filter(r => r.id !== input.id)); return false }
+  }, [])
+
+  const deleteRoom = useCallback(async (id: string): Promise<boolean> => {
+    const oldRooms = currentRooms
+    setCurrentRooms(prev => prev.filter(r => r.id !== id))
+    // Move agents in deleted room to commons
+    setRawAgents(prev => prev.map(a => a.roomId === id ? { ...a, roomId: 'commons' } : a))
+    addActivity({ kind: 'system', text: `Room deleted` })
+    try {
+      const res = await fetch(`/api/office/room/${id}`, { method: 'DELETE' })
+      if (!res.ok) { setCurrentRooms(oldRooms); return false }
+      return true
+    } catch { setCurrentRooms(oldRooms); return false }
+  }, [currentRooms])
+
+  // ── Webhooks ──
+  const createWebhook = useCallback(async (input: { url: string; secret?: string; events: string[] }): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/office/webhook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      setWebhooks(prev => [...prev, data.webhook])
+      return true
+    } catch { return false }
+  }, [])
+
+  const deleteWebhook = useCallback(async (id: string): Promise<boolean> => {
+    const old = webhooks
+    setWebhooks(prev => prev.filter(w => w.id !== id))
+    try {
+      const res = await fetch(`/api/office/webhook/${id}`, { method: 'DELETE' })
+      if (!res.ok) { setWebhooks(old); return false }
+      return true
+    } catch { setWebhooks(old); return false }
+  }, [webhooks])
+
+  // ── Drag-and-drop position update ──
+  const updateAgentPosition = useCallback((agentId: string, xPct: number, yPct: number, roomId?: string) => {
+    setCurrentSeats(prev => ({ ...prev, [agentId]: { xPct, yPct } }))
+    if (roomId) {
+      setRawAgents(prev => prev.map(a => a.id === agentId ? { ...a, roomId } : a))
+    }
+    const patch: Record<string, unknown> = { xPct, yPct }
+    if (roomId) patch.roomId = roomId
+    fetch(`/api/office/agent/${agentId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    }).catch(() => {})
+  }, [])
+
   const value = useMemo<OfficeState>(() => ({
     agents,
     rooms: currentRooms,
@@ -584,6 +782,10 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     assignments,
     activity,
     agentRuntimeStatuses,
+    decisions,
+    messages,
+    webhooks,
+    toasts,
     selectedAgentId,
     berlinTimeLabel,
     withinWorkday,
@@ -598,8 +800,17 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     updateAgent,
     deleteAgent,
     updateSettings,
-    updateRoom
-  }), [agents, currentRooms, currentSeats, currentPolicy, officeSettings, assignments, activity, agentRuntimeStatuses, selectedAgentId, berlinTimeLabel, withinWorkday, dataSource, connectionError, assignTask, completeTask, saveResult, dismissResult, createAgent, updateAgent, deleteAgent, updateSettings, updateRoom])
+    updateRoom,
+    createDecision,
+    updateDecision,
+    sendMessage,
+    createRoom,
+    deleteRoom,
+    createWebhook,
+    deleteWebhook,
+    dismissToast,
+    updateAgentPosition,
+  }), [agents, currentRooms, currentSeats, currentPolicy, officeSettings, assignments, activity, agentRuntimeStatuses, decisions, messages, webhooks, toasts, selectedAgentId, berlinTimeLabel, withinWorkday, dataSource, connectionError, assignTask, completeTask, saveResult, dismissResult, createAgent, updateAgent, deleteAgent, updateSettings, updateRoom, createDecision, updateDecision, sendMessage, createRoom, deleteRoom, createWebhook, deleteWebhook, dismissToast, updateAgentPosition])
 
   return <OfficeContext.Provider value={value}>{children}</OfficeContext.Provider>
 }
