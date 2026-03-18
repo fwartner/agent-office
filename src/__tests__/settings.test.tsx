@@ -54,6 +54,13 @@ async function renderApp() {
   })
 }
 
+/** The settings tab uses a gear icon (⚙). Find it by role. */
+function getSettingsTab() {
+  const tabs = screen.getAllByRole('tab')
+  // The last tab is the settings gear icon
+  return tabs[tabs.length - 1]
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
@@ -61,15 +68,14 @@ beforeEach(() => {
 describe('Settings Panel', () => {
   it('Settings tab is visible', async () => {
     await renderApp()
-    const settingsTab = screen.getByRole('tab', { name: 'Settings' })
+    const settingsTab = getSettingsTab()
     expect(settingsTab).toBeInTheDocument()
   })
 
   it('clicking Settings tab shows settings panel', async () => {
     await renderApp()
-    const settingsTab = screen.getByRole('tab', { name: 'Settings' })
     await act(async () => {
-      fireEvent.click(settingsTab)
+      fireEvent.click(getSettingsTab())
     })
     // The General section should be visible (open by default)
     expect(screen.getByLabelText('Office name')).toBeInTheDocument()
@@ -78,7 +84,7 @@ describe('Settings Panel', () => {
   it('shows all settings sections', async () => {
     await renderApp()
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+      fireEvent.click(getSettingsTab())
     })
     expect(screen.getByText('General')).toBeInTheDocument()
     expect(screen.getByText('Workday Policy')).toBeInTheDocument()
@@ -95,13 +101,13 @@ describe('Settings Panel', () => {
   it('rooms section lists all rooms', async () => {
     await renderApp()
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+      fireEvent.click(getSettingsTab())
     })
     // Open Rooms section
     await act(async () => {
       fireEvent.click(screen.getByText('Rooms'))
     })
-    // Room names appear in both map overlays and settings; check at least one exists
+    // Room names appear in both left sidebar tree and settings; check at least one exists
     expect(screen.getAllByText('Planning Studio').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('Shipyard').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('Systems Bay').length).toBeGreaterThanOrEqual(2)
@@ -110,7 +116,7 @@ describe('Settings Panel', () => {
   it('danger zone shows reset button', async () => {
     await renderApp()
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+      fireEvent.click(getSettingsTab())
     })
     await act(async () => {
       fireEvent.click(screen.getByText('Danger Zone'))
@@ -121,7 +127,7 @@ describe('Settings Panel', () => {
   it('reset button shows confirmation', async () => {
     await renderApp()
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+      fireEvent.click(getSettingsTab())
     })
     await act(async () => {
       fireEvent.click(screen.getByText('Danger Zone'))

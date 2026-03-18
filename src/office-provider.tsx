@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useCal
 import { agents as seedAgents, rooms as seedRooms, agentSeats as seedSeats, workdayPolicy as seedPolicy, defaultSettings, type AgentCard, type PresenceState, type Room, type WorkdayPolicy, type OfficeSettings, type RoomUpdateInput, type DecisionRecord, type MessageRecord, type WebhookRecord, type WebhookLogRecord } from './data'
 import { characterSprites, worldEntities, type ActivityItem, type AssignmentRecord } from './world'
 import type { AgentRuntimeStatus } from './office-state'
+import { useSSE, type SSEEventType } from './hooks/useSSE'
 
 export interface OfficeAgent extends AgentCard {
   effectivePresence: PresenceState
@@ -13,12 +14,16 @@ export interface AgentCreateInput {
   id: string; name: string; role: string; team: string; roomId: string
   presence?: PresenceState; focus?: string; criticalTask?: boolean; collaborationMode?: string
   systemPrompt?: string
+  runtimeMaxTurns?: number; runtimeTimeoutSec?: number; runtimeWorkingDir?: string
+  runtimeAllowedTools?: string; runtimeMode?: string
 }
 
 export interface AgentUpdateInput {
   name?: string; role?: string; team?: string; roomId?: string
   presence?: PresenceState; focus?: string; criticalTask?: boolean; collaborationMode?: string
   systemPrompt?: string
+  runtimeMaxTurns?: number; runtimeTimeoutSec?: number; runtimeWorkingDir?: string
+  runtimeAllowedTools?: string; runtimeMode?: string
 }
 
 export interface ToastItem {
@@ -26,6 +31,12 @@ export interface ToastItem {
   message: string
   kind: 'info' | 'success' | 'warning' | 'error'
   createdAt: number
+}
+
+export interface AgentBubble {
+  text: string
+  color: string
+  expiresAt: number
 }
 
 interface OfficeState {
@@ -41,6 +52,7 @@ interface OfficeState {
   messages: MessageRecord[]
   webhooks: WebhookRecord[]
   toasts: ToastItem[]
+  agentBubbles: Map<string, AgentBubble>
   selectedAgentId: string | null
   berlinTimeLabel: string
   withinWorkday: boolean
@@ -55,6 +67,7 @@ interface OfficeState {
     routingTarget: 'agent_runtime' | 'work_tracker' | 'both'
   }) => void
   completeTask: (assignmentId: string, result: string) => Promise<boolean>
+  cancelTask: (agentId: string) => Promise<boolean>
   saveResult: (assignmentId: string) => Promise<boolean>
   dismissResult: (assignmentId: string) => void
   createAgent: (input: AgentCreateInput) => Promise<boolean>
@@ -92,11 +105,50 @@ function getBerlinNow(tz: string) {
   }
 }
 
-function isWithinWorkday(tz: string) {
+function parseDayRange(daysStr: string): string[] {
+  const dayMap: Record<string, string> = {
+    monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu',
+    friday: 'Fri', saturday: 'Sat', sunday: 'Sun',
+    mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
+  }
+  const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const parts = daysStr.split('-').map(s => s.trim().toLowerCase())
+  if (parts.length === 2) {
+    const start = dayMap[parts[0]]
+    const end = dayMap[parts[1]]
+    if (start && end) {
+      const si = allDays.indexOf(start)
+      const ei = allDays.indexOf(end)
+      if (si >= 0 && ei >= 0) {
+        const result: string[] = []
+        for (let i = si; i <= ei; i++) result.push(allDays[i])
+        return result
+      }
+    }
+  }
+  // Try comma-separated
+  const result: string[] = []
+  for (const p of daysStr.split(',')) {
+    const d = dayMap[p.trim().toLowerCase()]
+    if (d) result.push(d)
+  }
+  return result.length > 0 ? result : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+}
+
+function parseHoursRange(hoursStr: string): { start: number; end: number } {
+  const match = hoursStr.match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/)
+  if (match) {
+    return { start: Number(match[1]) * 60 + Number(match[2]), end: Number(match[3]) * 60 + Number(match[4]) }
+  }
+  return { start: 540, end: 1020 } // 09:00-17:00
+}
+
+function isWithinWorkday(tz: string, policyDays?: string, policyHours?: string) {
   const { weekday, hour, minute } = getBerlinNow(tz)
-  const ok = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+  const days = parseDayRange(policyDays ?? 'Monday-Friday')
+  const { start, end } = parseHoursRange(policyHours ?? '09:00-17:00')
   const t = hour * 60 + minute
-  return ok && t >= 540 && t < 1020
+  return days.includes(weekday) && t >= start && t < end
 }
 
 function getEffectivePresence(state: PresenceState, within: boolean): PresenceState {
@@ -211,8 +263,8 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [berlinTimeLabel, setBerlinTimeLabel] = useState(getBerlinNow(seedPolicy.timezone).label)
-  const [withinWorkday, setWithinWorkday] = useState(isWithinWorkday(seedPolicy.timezone))
-  const [agents, setAgents] = useState<OfficeAgent[]>(() => buildAgents(seedAgents, isWithinWorkday(seedPolicy.timezone)))
+  const [withinWorkday, setWithinWorkday] = useState(isWithinWorkday(seedPolicy.timezone, seedPolicy.days, seedPolicy.hours))
+  const [agents, setAgents] = useState<OfficeAgent[]>(() => buildAgents(seedAgents, isWithinWorkday(seedPolicy.timezone, seedPolicy.days, seedPolicy.hours)))
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([])
   const [agentRuntimeStatuses, setAgentRuntimeStatuses] = useState<AgentRuntimeStatus[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>(INITIAL_ACTIVITY)
@@ -220,9 +272,12 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [webhooks, setWebhooks] = useState<WebhookRecord[]>([])
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [agentBubbles, setAgentBubbles] = useState<Map<string, AgentBubble>>(new Map())
+  const rawAgentsRef = useRef<AgentCard[]>(seedAgents)
   const prevSnapshotRef = useRef<{ assignments: AssignmentRecord[]; agents: AgentCard[] }>({ assignments: [], agents: [] })
   const wasLive = useRef(false)
   const consecutiveFailures = useRef(0)
+  const [sseConnected, setSseConnected] = useState(false)
 
   // Toast helpers
   const addToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
@@ -243,6 +298,106 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     }, 1000)
     return () => clearInterval(timer)
   }, [toasts.length])
+
+  // Keep rawAgentsRef in sync
+  useEffect(() => { rawAgentsRef.current = rawAgents }, [rawAgents])
+
+  // Bubble helpers
+  const setBubble = useCallback((agentId: string, text: string, color: string, ttlMs = 5000) => {
+    setAgentBubbles(prev => {
+      const next = new Map(prev)
+      next.set(agentId, { text, color, expiresAt: Date.now() + ttlMs })
+      return next
+    })
+  }, [])
+
+  // Cleanup expired bubbles
+  useEffect(() => {
+    if (agentBubbles.size === 0) return
+    const timer = setInterval(() => {
+      const now = Date.now()
+      setAgentBubbles(prev => {
+        let changed = false
+        const next = new Map(prev)
+        for (const [id, b] of next) {
+          if (now >= b.expiresAt) { next.delete(id); changed = true }
+        }
+        return changed ? next : prev
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [agentBubbles.size])
+
+  // SSE handler — apply real-time updates from server
+  const handleSSE = useCallback((eventType: SSEEventType, data: unknown) => {
+    const d = data as Record<string, unknown>
+    switch (eventType) {
+      case 'settings.changed':
+        if (d.settings || d.officeName !== undefined) {
+          setOfficeSettings(prev => ({ ...defaultSettings, ...prev, ...(d.settings ? d.settings as unknown as OfficeSettings : d as unknown as OfficeSettings) }))
+          const incoming = (d.settings ?? d) as Record<string, unknown>
+          if (incoming.workdayPolicy && typeof incoming.workdayPolicy === 'object') {
+            setCurrentPolicy(prev => ({ ...prev, ...(incoming.workdayPolicy as Partial<WorkdayPolicy>) }))
+          }
+        }
+        break
+      case 'task.created': {
+        const agentId = String(d.agentId ?? '')
+        const title = String(d.title ?? '')
+        if (agentId) setBubble(agentId, `On it! Working on: ${title}`, '#95d8ff', 5000)
+        break
+      }
+      case 'agent.output': {
+        const agentId = String(d.agentId ?? '')
+        const chunk = String(d.chunk ?? '').slice(0, 80)
+        if (agentId && chunk) setBubble(agentId, chunk, '#78f7b5', 6000)
+        break
+      }
+      case 'task.completed': {
+        const agentId = String(d.agentId ?? '')
+        const result = String(d.result ?? 'Done!').slice(0, 50)
+        if (agentId) setBubble(agentId, `Done! ${result}`, '#78f7b5', 5000)
+        break
+      }
+      case 'task.failed': {
+        const agentId = String(d.agentId ?? '')
+        const error = String(d.error ?? 'Unknown error').slice(0, 50)
+        if (agentId) setBubble(agentId, `Blocked: ${error}`, '#ff8b8b', 5000)
+        break
+      }
+      case 'message.sent': {
+        const msg: MessageRecord = {
+          id: String(d.messageId ?? `msg-sse-${Date.now()}`),
+          fromAgentId: String(d.fromAgentId ?? ''),
+          toAgentId: d.toAgentId ? String(d.toAgentId) : null,
+          roomId: d.roomId ? String(d.roomId) : null,
+          message: String(d.message ?? ''),
+          createdAt: new Date().toISOString(),
+        }
+        if (msg.fromAgentId && msg.message) {
+          setMessages(prev => {
+            // Deduplicate by id
+            if (prev.some(m => m.id === msg.id)) return prev
+            return [...prev, msg].slice(-100)
+          })
+        }
+        break
+      }
+      case 'agent.presence_changed':
+      case 'agent.created':
+      case 'agent.deleted':
+        break
+    }
+  }, [setBubble])
+
+  const { connected: sseIsConnected } = useSSE(handleSSE, dataSource === 'live')
+
+  // Track SSE connection state via ref so poll loop can read it without re-mounting
+  const sseConnectedRef = useRef(false)
+  useEffect(() => {
+    sseConnectedRef.current = sseIsConnected
+    setSseConnected(sseIsConnected)
+  }, [sseIsConnected])
 
   // Poll for live state from API with exponential backoff
   useEffect(() => {
@@ -301,8 +456,15 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
           for (const a of data.assignments) {
             const prev = prevAssignments.find(p => p.id === a.id)
             if (prev && prev.status !== a.status) {
-              if (a.status === 'done') addToast(`Task "${a.taskTitle}" completed`, 'success')
+              if (a.status === 'done') {
+                addToast(`Task "${a.taskTitle}" completed`, 'success')
+                // Auto-save result when task completes
+                if (a.result && !prev.result) {
+                  fetch(`/api/office/result/${a.id}/save`, { method: 'POST' }).catch(() => {})
+                }
+              }
               if (a.status === 'blocked') addToast(`Task "${a.taskTitle}" blocked`, 'warning')
+              if (a.status === 'cancelled') addToast(`Task "${a.taskTitle}" cancelled`, 'info')
             }
           }
           for (const agent of data.agents) {
@@ -332,8 +494,10 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       }
 
       if (!cancelled) {
-        // Exponential backoff: 4s -> 8s -> 16s -> 30s max
-        const delay = Math.min(BASE_POLL_MS * Math.pow(2, Math.min(consecutiveFailures.current, 3)), MAX_POLL_MS)
+        // When SSE is connected, use long poll interval (backup only); otherwise use exponential backoff
+        const delay = sseConnectedRef.current
+          ? MAX_POLL_MS
+          : Math.min(BASE_POLL_MS * Math.pow(2, Math.min(consecutiveFailures.current, 3)), MAX_POLL_MS)
         timer = setTimeout(poll, delay)
       }
     }
@@ -346,7 +510,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const tick = () => {
       const tz = currentPolicy.timezone
-      const nextWithin = isWithinWorkday(tz)
+      const nextWithin = isWithinWorkday(tz, currentPolicy.days, currentPolicy.hours)
       setBerlinTimeLabel(getBerlinNow(tz).label)
       setWithinWorkday(nextWithin)
       setAgents(buildAgents(rawAgents, nextWithin))
@@ -354,7 +518,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     tick()
     const timer = setInterval(tick, 750)
     return () => clearInterval(timer)
-  }, [rawAgents, currentPolicy.timezone])
+  }, [rawAgents, currentPolicy.timezone, currentPolicy.days, currentPolicy.hours])
 
   // ── Helpers: push activity + patch agent ──
 
@@ -421,6 +585,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       text: `Assigned "${title}" to ${agent?.name ?? input.targetAgentId}`,
       agentId: input.targetAgentId,
     })
+    setBubble(input.targetAgentId, `On it! Working on: ${title}`, '#95d8ff', 5000)
 
     // POST to server — log failure to activity feed
     fetch('/api/office/assign', {
@@ -441,7 +606,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
         text: `Failed to persist assignment "${title}" — saved locally only`,
       })
     })
-  }, [rawAgents])
+  }, [rawAgents, setBubble])
 
   const completeTask: OfficeState['completeTask'] = useCallback(async (assignmentId, result) => {
     // Optimistic update
@@ -472,6 +637,32 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       return false
     }
   }, [assignments, rawAgents])
+
+  const cancelTask: OfficeState['cancelTask'] = useCallback(async (agentId) => {
+    try {
+      const res = await fetch(`/api/office/agent/${agentId}/cancel`, { method: 'POST' })
+      if (!res.ok) {
+        addActivity({ kind: 'system', text: `Failed to cancel task for ${agentId}` })
+        return false
+      }
+      // Optimistic: update agent presence and assignment status locally
+      setRawAgents(current =>
+        current.map(a => a.id === agentId ? { ...a, presence: 'available' as const, focus: 'Task cancelled' } : a)
+      )
+      setAssignments(current =>
+        current.map(a => a.targetAgentId === agentId && a.status === 'active'
+          ? { ...a, status: 'cancelled' as const }
+          : a)
+      )
+      const agent = rawAgents.find(a => a.id === agentId)
+      addActivity({ kind: 'system', text: `Task cancelled for ${agent?.name ?? agentId}`, agentId })
+      setBubble(agentId, 'Task cancelled', '#ff8b8b', 4000)
+      return true
+    } catch {
+      addActivity({ kind: 'system', text: 'Failed to cancel task — network error' })
+      return false
+    }
+  }, [rawAgents, setBubble])
 
   const saveResult: OfficeState['saveResult'] = useCallback(async (assignmentId) => {
     try {
@@ -787,6 +978,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     messages,
     webhooks,
     toasts,
+    agentBubbles,
     selectedAgentId,
     berlinTimeLabel,
     withinWorkday,
@@ -795,6 +987,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     selectAgent: setSelectedAgentId,
     assignTask,
     completeTask,
+    cancelTask,
     saveResult,
     dismissResult,
     createAgent,
@@ -811,7 +1004,7 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     deleteWebhook,
     dismissToast,
     updateAgentPosition,
-  }), [agents, currentRooms, currentSeats, currentPolicy, officeSettings, assignments, activity, agentRuntimeStatuses, decisions, messages, webhooks, toasts, selectedAgentId, berlinTimeLabel, withinWorkday, dataSource, connectionError, assignTask, completeTask, saveResult, dismissResult, createAgent, updateAgent, deleteAgent, updateSettings, updateRoom, createDecision, updateDecision, sendMessage, createRoom, deleteRoom, createWebhook, deleteWebhook, dismissToast, updateAgentPosition])
+  }), [agents, currentRooms, currentSeats, currentPolicy, officeSettings, assignments, activity, agentRuntimeStatuses, decisions, messages, webhooks, toasts, agentBubbles, selectedAgentId, berlinTimeLabel, withinWorkday, dataSource, connectionError, assignTask, completeTask, cancelTask, saveResult, dismissResult, createAgent, updateAgent, deleteAgent, updateSettings, updateRoom, createDecision, updateDecision, sendMessage, createRoom, deleteRoom, createWebhook, deleteWebhook, dismissToast, updateAgentPosition])
 
   return <OfficeContext.Provider value={value}>{children}</OfficeContext.Provider>
 }

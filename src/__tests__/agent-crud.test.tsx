@@ -58,10 +58,13 @@ async function renderAppAndSelectAgent() {
   await act(async () => {
     await new Promise(r => setTimeout(r, 50))
   })
-  // Click Forge in the roster
+  // Click Forge in the left sidebar tree
   const forgeButtons = screen.getAllByText('Forge')
-  const rosterButton = forgeButtons.find(el => el.closest('.roster-card'))
-  if (rosterButton) fireEvent.click(rosterButton)
+  const treeButton = forgeButtons.find(el => el.closest('.tree-agent-row'))
+  if (treeButton) {
+    const row = treeButton.closest('.tree-agent-row') as HTMLElement
+    fireEvent.click(row)
+  }
   return result!
 }
 
@@ -69,7 +72,7 @@ describe('Agent CRUD — Create', () => {
   it('create form renders with all fields', async () => {
     await renderAppAndSelectAgent()
     fireEvent.keyDown(window, { key: 'Escape' })
-    fireEvent.click(screen.getByText('+ Add Agent'))
+    fireEvent.click(screen.getByText('+ Agent'))
 
     expect(screen.getByPlaceholderText('Agent ID (lowercase, hyphens)')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Name')).toBeInTheDocument()
@@ -81,7 +84,7 @@ describe('Agent CRUD — Create', () => {
   it('create form has required fields', async () => {
     await renderAppAndSelectAgent()
     fireEvent.keyDown(window, { key: 'Escape' })
-    fireEvent.click(screen.getByText('+ Add Agent'))
+    fireEvent.click(screen.getByText('+ Agent'))
 
     const idInput = screen.getByPlaceholderText('Agent ID (lowercase, hyphens)')
     expect(idInput).toHaveAttribute('required')
@@ -94,7 +97,7 @@ describe('Agent CRUD — Create', () => {
   it('agent ID input has pattern for lowercase+hyphens', async () => {
     await renderAppAndSelectAgent()
     fireEvent.keyDown(window, { key: 'Escape' })
-    fireEvent.click(screen.getByText('+ Add Agent'))
+    fireEvent.click(screen.getByText('+ Agent'))
 
     const idInput = screen.getByPlaceholderText('Agent ID (lowercase, hyphens)')
     expect(idInput).toHaveAttribute('pattern', '[a-z0-9-]+')

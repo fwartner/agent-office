@@ -33,3 +33,6 @@ assets/pixelart/Office Tileset/
 .cursor/
 tmp/
 .setup-done
+
+# Runtime state (DB, results, settings)
+state/

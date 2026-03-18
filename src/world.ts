@@ -35,7 +35,7 @@ export interface AssignmentRecord {
   taskTitle: string
   taskBrief: string
   priority: 'low' | 'medium' | 'high'
-  status: 'queued' | 'routed' | 'active' | 'done' | 'blocked'
+  status: 'queued' | 'routed' | 'active' | 'done' | 'blocked' | 'cancelled'
   routingTarget: 'agent_runtime' | 'work_tracker' | 'both'
   createdAt: string
   source?: string

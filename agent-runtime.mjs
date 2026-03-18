@@ -6,8 +6,17 @@ import { spawn } from 'node:child_process'
 
 const CLAUDE_CMD = process.env.CLAUDE_CMD || 'claude'
 const MAX_RESULT_LEN = 2000
+let projectRoot = process.cwd()
 
-/** @type {Map<string, { agentId: string, name: string, role: string, systemPrompt: string, currentTask: { assignmentId: string, childProcess: import('child_process').ChildProcess } | null }>} */
+/**
+ * Set the project root directory (used as default cwd for agent tasks).
+ * @param {string} dir
+ */
+export function setProjectRoot(dir) {
+  projectRoot = dir
+}
+
+/** @type {Map<string, { agentId: string, name: string, role: string, systemPrompt: string, runtimeConfig: Record<string, unknown>, currentTask: { assignmentId: string, childProcess: import('child_process').ChildProcess } | null }>} */
 const registry = new Map()
 
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -19,15 +28,19 @@ let queueTimer = null
  * @param {string} name
  * @param {string} role
  * @param {string} [systemPrompt]
+ * @param {Record<string, unknown>} [runtimeConfig]
  */
-export function registerAgent(agentId, name, role, systemPrompt = '') {
+export function registerAgent(agentId, name, role, systemPrompt = '', runtimeConfig = {}) {
   if (registry.has(agentId)) {
-    // Update systemPrompt if agent already registered
+    // Update systemPrompt and runtimeConfig if agent already registered
     const existing = registry.get(agentId)
-    if (existing && systemPrompt) existing.systemPrompt = systemPrompt
+    if (existing) {
+      if (systemPrompt) existing.systemPrompt = systemPrompt
+      existing.runtimeConfig = runtimeConfig
+    }
     return
   }
-  registry.set(agentId, { agentId, name, role, systemPrompt, currentTask: null })
+  registry.set(agentId, { agentId, name, role, systemPrompt, runtimeConfig, currentTask: null })
   console.log(`[agent-runtime] Registered agent: ${agentId} (${name})`)
 }
 
@@ -70,19 +83,45 @@ export function dispatchTask(agentId, assignment, callbacks) {
     ? `${entry.systemPrompt}\n\nTask: ${assignment.taskTitle}\n\n${assignment.taskBrief || ''}\n\nProvide your response directly.`
     : `You are ${entry.name}, a ${entry.role}.\n\nTask: ${assignment.taskTitle}\n\n${assignment.taskBrief || ''}\n\nProvide your response directly.`
 
+  const maxTurns = String(entry.runtimeConfig.maxTurns || 3)
+  const timeoutMs = (entry.runtimeConfig.timeoutSec || 300) * 1000
+
   const args = [
     '-p', prompt,
     '--output-format', 'json',
-    '--max-turns', '3',
-    '--dangerously-skip-permissions',
+    '--max-turns', maxTurns,
   ]
+
+  // Only add --dangerously-skip-permissions if mode is not 'readonly'
+  if (entry.runtimeConfig.mode !== 'readonly') {
+    args.push('--dangerously-skip-permissions')
+  }
+
+  // Add allowed tools if specified
+  if (entry.runtimeConfig.allowedTools) {
+    try {
+      const tools = typeof entry.runtimeConfig.allowedTools === 'string'
+        ? JSON.parse(entry.runtimeConfig.allowedTools)
+        : entry.runtimeConfig.allowedTools
+      if (Array.isArray(tools) && tools.length > 0) {
+        for (const tool of tools) {
+          args.push('--allowedTools', String(tool).trim())
+        }
+      }
+    } catch { /* invalid JSON, skip */ }
+  }
 
   console.log(`[agent-runtime] Dispatching task "${assignment.taskTitle}" to ${agentId}`)
 
-  const child = spawn(CLAUDE_CMD, args, {
+  const spawnOpts = {
     stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 300_000, // 5 minute timeout
-  })
+    timeout: timeoutMs,
+  }
+
+  // Use custom working directory if specified, fallback to project root
+  spawnOpts.cwd = entry.runtimeConfig.workingDir || projectRoot
+
+  const child = spawn(CLAUDE_CMD, args, spawnOpts)
 
   entry.currentTask = { assignmentId: assignment.id, childProcess: child }
 
@@ -94,7 +133,20 @@ export function dispatchTask(agentId, assignment, callbacks) {
   let stdout = ''
   let stderr = ''
 
-  child.stdout.on('data', (chunk) => { stdout += chunk })
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+    if (callbacks.onOutput) {
+      // Try to extract readable text from JSON chunks for live display
+      let displayText = chunk.toString()
+      try {
+        const parsed = JSON.parse(displayText.trim())
+        if (parsed.result) displayText = parsed.result
+        else if (parsed.text) displayText = parsed.text
+        else if (parsed.content) displayText = parsed.content
+      } catch { /* not JSON, use raw */ }
+      Promise.resolve(callbacks.onOutput(assignment.id, displayText)).catch(() => {})
+    }
+  })
   child.stderr.on('data', (chunk) => { stderr += chunk })
 
   child.on('close', (code) => {
@@ -103,10 +155,26 @@ export function dispatchTask(agentId, assignment, callbacks) {
     if (code === 0) {
       let resultText = ''
       try {
-        const parsed = JSON.parse(stdout)
-        resultText = parsed.result || parsed.text || stdout
+        // claude --output-format json may output multiple JSON objects (streaming)
+        // Try parsing the last complete JSON object, or the whole thing
+        const trimmed = stdout.trim()
+        let parsed = null
+        // Try whole output as single JSON
+        try { parsed = JSON.parse(trimmed) } catch {
+          // Try last line (streaming mode outputs one JSON per line)
+          const lines = trimmed.split('\n').filter(l => l.trim())
+          for (let i = lines.length - 1; i >= 0; i--) {
+            try { parsed = JSON.parse(lines[i]); break } catch { /* try next */ }
+          }
+        }
+        if (parsed) {
+          resultText = parsed.result || parsed.text || parsed.content || ''
+          // If result is still an object/array, stringify it
+          if (typeof resultText !== 'string') resultText = JSON.stringify(resultText)
+        }
+        if (!resultText) resultText = trimmed
       } catch {
-        resultText = stdout
+        resultText = stdout.trim()
       }
       // Truncate to max length
       if (typeof resultText === 'string' && resultText.length > MAX_RESULT_LEN) {
@@ -186,6 +254,23 @@ export function startTaskQueue(intervalMs, getQueuedTasks, dispatchFn) {
     }
   }, intervalMs)
   console.log(`[agent-runtime] Task queue processor started (${intervalMs}ms interval)`)
+}
+
+/**
+ * Cancel a running task for an agent.
+ * @param {string} agentId
+ * @returns {string | null} The cancelled assignmentId, or null if not busy
+ */
+export function cancelTask(agentId) {
+  const entry = registry.get(agentId)
+  if (!entry || !entry.currentTask) return null
+  const assignmentId = entry.currentTask.assignmentId
+  try {
+    entry.currentTask.childProcess.kill('SIGTERM')
+  } catch { /* already dead */ }
+  entry.currentTask = null
+  console.log(`[agent-runtime] Cancelled task ${assignmentId} for agent ${agentId}`)
+  return assignmentId
 }
 
 /**

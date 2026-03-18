@@ -2,7 +2,6 @@
  * Seed data — populates empty database with default rooms.
  * Only inserts if tables are empty (idempotent).
  */
-import { eq, sql } from 'drizzle-orm'
 import type { DbConnection } from './index.js'
 
 const SEED_ROOMS = [
@@ -13,9 +12,12 @@ const SEED_ROOMS = [
   { id: 'signal-room', name: 'Signal Room', team: 'Ops', purpose: 'Status, reporting, decisions, and operational visibility', zoneX: 62, zoneY: 60, zoneW: 36, zoneH: 38 },
 ]
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = any
+
 export async function seedDatabase(conn: DbConnection): Promise<void> {
   const { schema } = conn
-  const db = conn.db as { select: Function; insert: Function }
+  const db: AnyDb = conn.db
 
   // Check if rooms exist
   const existingRooms = await db.select({ id: schema.officeRooms.id }).from(schema.officeRooms).limit(1)

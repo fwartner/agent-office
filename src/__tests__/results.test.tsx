@@ -145,7 +145,7 @@ describe('Task result display', () => {
     expect(resultText).toBeDefined()
   })
 
-  it('shows Save and Dismiss buttons for visible results', async () => {
+  it('shows auto-saved indicator for results (no Save/Dismiss buttons)', async () => {
     const snapshot = makeSnapshot({
       assignments: [{
         id: 'assignment-4', targetAgentId: 'forge', taskTitle: 'Task with result',
@@ -161,13 +161,15 @@ describe('Task result display', () => {
     const tasksTab = await screen.findByRole('tab', { name: /^tasks/i })
     fireEvent.click(tasksTab)
 
-    const saveBtn = await screen.findByText('Save locally')
-    const dismissBtn = await screen.findByText('Dismiss')
-    expect(saveBtn).toBeDefined()
-    expect(dismissBtn).toBeDefined()
+    await screen.findByText('Some result text')
+    // Save/Dismiss buttons should not exist (results are auto-saved)
+    const saveButtons = screen.queryAllByText('Save locally')
+    const dismissButtons = screen.queryAllByText('Dismiss')
+    expect(saveButtons.length).toBe(0)
+    expect(dismissButtons.length).toBe(0)
   })
 
-  it('hides result when dismissed', async () => {
+  it('always shows result even with dismissed status (auto-save overrides dismiss)', async () => {
     const snapshot = makeSnapshot({
       assignments: [{
         id: 'assignment-5', targetAgentId: 'forge', taskTitle: 'Dismissed task',
@@ -184,8 +186,9 @@ describe('Task result display', () => {
     fireEvent.click(tasksTab)
 
     await screen.findByText('Dismissed task')
+    // Result should still show since we no longer hide dismissed results
     const resultTexts = screen.queryAllByText('This result was dismissed')
-    expect(resultTexts.length).toBe(0)
+    expect(resultTexts.length).toBe(1)
   })
 })
 

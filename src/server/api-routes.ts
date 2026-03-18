@@ -75,12 +75,18 @@ export interface ApiContext {
   // Settings
   updateSettings(input: Record<string, unknown>): Promise<Record<string, unknown>>
   // Runtime hooks
-  registerAgentRuntime?(id: string, name: string, role: string, systemPrompt: string): void
+  registerAgentRuntime?(id: string, name: string, role: string, systemPrompt: string, runtimeConfig?: Record<string, unknown>): void
   unregisterAgentRuntime?(id: string): void
   dispatchToRuntime?(agentId: string, assignment: Record<string, unknown>): void
   getAgentRuntimeStatuses?(): unknown[]
+  cancelAgentTask?(agentId: string): string | null
+  // Integrations
+  getIntegration?(name: string): Promise<Record<string, unknown> | null>
+  updateIntegration?(name: string, input: Record<string, unknown>): Promise<boolean>
   // Integration webhook handlers (registered by integration modules)
   integrationWebhooks?: Record<string, (req: { body: string; headers: Record<string, string | undefined> }) => Promise<{ status: number; body: Record<string, unknown> }>>
+  // Settings changed callback (for SSE broadcast)
+  onSettingsChanged?(settings: Record<string, unknown>): void
   // Results dir
   resultsDir: string
 }
@@ -150,7 +156,13 @@ export async function createAgent(ctx: ApiContext, input: unknown): Promise<ApiR
   try {
     const result = await ctx.createAgent(o)
     if (ctx.registerAgentRuntime) {
-      ctx.registerAgentRuntime(String(o.id), String(o.name), String(o.role), o.systemPrompt ? String(o.systemPrompt).slice(0, MAX_SYSTEM_PROMPT_LEN) : '')
+      ctx.registerAgentRuntime(String(o.id), String(o.name), String(o.role), o.systemPrompt ? String(o.systemPrompt).slice(0, MAX_SYSTEM_PROMPT_LEN) : '', {
+        maxTurns: o.runtimeMaxTurns ?? 3,
+        timeoutSec: o.runtimeTimeoutSec ?? 300,
+        workingDir: o.runtimeWorkingDir ?? undefined,
+        allowedTools: o.runtimeAllowedTools ?? undefined,
+        mode: o.runtimeMode ?? 'full',
+      })
     }
     emit({ type: 'agent.created', agentId: String(o.id), name: String(o.name) })
     return ok(201, { ok: true, id: result.id })
@@ -223,6 +235,17 @@ export async function saveResult(ctx: ApiContext, assignmentId: string): Promise
   return ok(200, { ok: true, path: filePath })
 }
 
+export async function cancelAgentTask(ctx: ApiContext, agentId: string): Promise<ApiResponse> {
+  if (!ctx.cancelAgentTask) return err(501, 'Agent runtime not available')
+  const assignmentId = ctx.cancelAgentTask(agentId)
+  if (!assignmentId) return err(404, 'No running task for this agent')
+  await ctx.updateAssignment(assignmentId, 'cancelled')
+  await ctx.patchAgent(agentId, { presence: 'available', focus: 'Task cancelled' })
+  await ctx.appendActivity({ kind: 'system', text: `Task cancelled for ${agentId}`, agentId })
+  emit({ type: 'task.failed', assignmentId, agentId, title: 'Cancelled', error: 'Task was cancelled by user' })
+  return ok(200, { ok: true, cancelledAssignmentId: assignmentId })
+}
+
 export async function listAssignments(ctx: ApiContext, filters: { status?: string; agent?: string; limit?: number }): Promise<ApiResponse> {
   const assignments = await ctx.listAssignments(filters)
   return ok(200, { assignments })
@@ -259,7 +282,54 @@ export async function sendMessage(ctx: ApiContext, input: unknown): Promise<ApiR
   const o = input as Record<string, unknown>
   if (!o.fromAgentId || !o.message) return err(400, 'fromAgentId and message required')
   const msg = await ctx.sendMessage(o)
-  emit({ type: 'message.sent', messageId: String(msg.id), fromAgentId: String(o.fromAgentId), roomId: o.roomId ? String(o.roomId) : null })
+  emit({ type: 'message.sent', messageId: String(msg.id), fromAgentId: String(o.fromAgentId), roomId: o.roomId ? String(o.roomId) : null, message: String(o.message).slice(0, 500) })
+
+  // Dispatch chat-response tasks to agents via the runtime
+  if (ctx.dispatchToRuntime) {
+    const fromLabel = o.fromAgentId === '__user__' ? 'the user' : o.fromAgentId === '__telegram__' ? 'a Telegram user' : String(o.fromAgentId)
+    const messageText = String(o.message)
+
+    // Build list of agents that should respond
+    let targetAgentIds: string[] = []
+
+    if (o.toAgentId && typeof o.toAgentId === 'string') {
+      // Direct message to one agent
+      targetAgentIds = [String(o.toAgentId)]
+    } else if (o.roomId) {
+      // Broadcast to room — all agents in that room should respond
+      try {
+        const snap = await ctx.getSnapshot()
+        const agents = snap.agents as Array<Record<string, unknown>>
+        targetAgentIds = agents
+          .filter(a => a.roomId === String(o.roomId) && a.id !== String(o.fromAgentId))
+          .map(a => String(a.id))
+      } catch { /* fallback: no dispatch */ }
+    }
+
+    for (const agentId of targetAgentIds) {
+      try {
+        const brief = `You received this message from ${fromLabel}: "${messageText}"\n\nRespond naturally and concisely.`
+        const title = `Respond to chat from ${fromLabel}`
+        const assignment = await ctx.createAssignment({
+          targetAgentId: agentId,
+          taskTitle: title,
+          taskBrief: brief,
+          priority: 'medium',
+          routingTarget: 'agent_runtime',
+          source: 'chat',
+        })
+        ctx.dispatchToRuntime(agentId, {
+          id: assignment.id,
+          taskTitle: title,
+          taskBrief: brief,
+          targetAgentId: agentId,
+        })
+      } catch (e) {
+        if (typeof process !== 'undefined') console.warn(`[api] chat dispatch error for ${agentId}:`, e)
+      }
+    }
+  }
+
   return ok(201, { ok: true, message: msg })
 }
 
@@ -315,6 +385,8 @@ export async function deleteWebhook(ctx: ApiContext, webhookId: string): Promise
 export async function updateSettings(ctx: ApiContext, input: unknown): Promise<ApiResponse> {
   if (!validateObject(input)) return err(400, 'Body must be a JSON object')
   const settings = await ctx.updateSettings(input as Record<string, unknown>)
+  if (ctx.onSettingsChanged) ctx.onSettingsChanged(settings)
+  emit({ type: 'settings.changed', settings })
   return ok(200, { ok: true, settings })
 }
 
@@ -333,19 +405,46 @@ export async function getHealth(ctx: ApiContext, startTime: number): Promise<Api
   })
 }
 
+// ── Integration handlers ─────────────────────────────
+
+export async function getIntegration(ctx: ApiContext, name: string): Promise<ApiResponse> {
+  if (!ctx.getIntegration) return err(501, 'Not available')
+  const integration = await ctx.getIntegration(name)
+  if (!integration) return ok(200, { name, config: {}, enabled: false })
+  return ok(200, integration as Record<string, unknown>)
+}
+
+export async function patchIntegration(ctx: ApiContext, name: string, input: unknown): Promise<ApiResponse> {
+  if (!ctx.updateIntegration) return err(501, 'Not available')
+  if (!validateObject(input)) return err(400, 'Body must be a JSON object')
+  await ctx.updateIntegration(name, input as Record<string, unknown>)
+  return ok(200, { ok: true })
+}
+
+export async function testIntegration(ctx: ApiContext, name: string): Promise<ApiResponse> {
+  if (!ctx.getIntegration) return err(501, 'Not available')
+  const integration = await ctx.getIntegration(name)
+  if (!integration) return err(404, 'Integration not configured')
+  return ok(200, { ok: true, status: 'test_sent' })
+}
+
 // ── Router helper ────────────────────────────────────
 
 export interface RouteResult {
   handled: boolean
   response?: ApiResponse
+  sse?: boolean
 }
 
 const AGENT_RE = /^\/api\/office\/agent\/([a-z0-9-]+)$/
+const AGENT_CANCEL_RE = /^\/api\/office\/agent\/([a-z0-9-]+)\/cancel$/
 const ASSIGNMENT_RE = /^\/api\/office\/assignment\/([a-z0-9-]+)$/
 const RESULT_SAVE_RE = /^\/api\/office\/result\/([a-z0-9-]+)\/save$/
 const DECISION_RE = /^\/api\/office\/decision\/([a-z0-9-]+)$/
 const ROOM_RE = /^\/api\/office\/room\/([a-z0-9-]+)$/
 const WEBHOOK_RE = /^\/api\/office\/webhook\/([a-z0-9-]+)$/
+const INTEGRATION_RE = /^\/api\/office\/integrations\/([a-z]+)$/
+const INTEGRATION_TEST_RE = /^\/api\/office\/integrations\/([a-z]+)\/test$/
 
 export async function routeRequest(
   ctx: ApiContext,
@@ -364,6 +463,11 @@ export async function routeRequest(
   // Snapshot
   if (pathname === '/api/office/snapshot' && method === 'GET') {
     return { handled: true, response: await getSnapshot(ctx) }
+  }
+  // Agent cancel route (must be before AGENT_RE to avoid matching)
+  const agentCancelMatch = pathname.match(AGENT_CANCEL_RE)
+  if (agentCancelMatch && method === 'POST') {
+    return { handled: true, response: await cancelAgentTask(ctx, agentCancelMatch[1]) }
   }
   // Agent routes
   const agentMatch = pathname.match(AGENT_RE)
@@ -438,6 +542,16 @@ export async function routeRequest(
   if (pathname === '/api/office/settings' && method === 'PATCH') {
     return { handled: true, response: await updateSettings(ctx, body) }
   }
+  // Integration config routes
+  const integrationMatch = pathname.match(INTEGRATION_RE)
+  if (integrationMatch) {
+    if (method === 'GET') return { handled: true, response: await getIntegration(ctx, integrationMatch[1]) }
+    if (method === 'PATCH') return { handled: true, response: await patchIntegration(ctx, integrationMatch[1], body) }
+  }
+  const integrationTestMatch = pathname.match(INTEGRATION_TEST_RE)
+  if (integrationTestMatch && method === 'POST') {
+    return { handled: true, response: await testIntegration(ctx, integrationTestMatch[1]) }
+  }
   // Integration inbound webhooks
   if (pathname.startsWith('/api/integrations/') && method === 'POST' && ctx.integrationWebhooks) {
     const name = pathname.replace('/api/integrations/', '')
@@ -450,6 +564,11 @@ export async function routeRequest(
         return { handled: true, response: err(500, 'Integration webhook error') }
       }
     }
+  }
+
+  // SSE endpoint
+  if (pathname === '/api/sse' && method === 'GET') {
+    return { handled: true, sse: true }
   }
 
   return { handled: false }

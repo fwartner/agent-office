@@ -43,6 +43,13 @@ async function handleEvent(event: OfficeEvent): Promise<void> {
     case 'decision.created':
       text = `🗳 New decision proposed: *${escapeMarkdown(event.title)}*`
       break
+    case 'message.sent':
+      // Forward office chat messages to Telegram (except those originating from Telegram to avoid loops)
+      if (event.fromAgentId !== '__telegram__' && event.message) {
+        const sender = event.fromAgentId === '__user__' ? 'User' : event.fromAgentId
+        text = `💬 *${escapeMarkdown(sender)}*: ${escapeMarkdown(event.message.slice(0, 300))}`
+      }
+      break
   }
 
   if (text) {

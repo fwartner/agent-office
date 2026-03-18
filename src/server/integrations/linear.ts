@@ -44,7 +44,7 @@ function createIssue(event: OfficeEvent & { type: 'task.created' }): void {
     input: {
       teamId: LINEAR_TEAM_ID,
       title: event.title,
-      description: `Clawd Office assignment \`${event.assignmentId}\` for agent \`${event.agentId}\`.`,
+      description: `Agent Office assignment \`${event.assignmentId}\` for agent \`${event.agentId}\`.`,
     },
   }).catch((err) => console.error('[linear] create issue failed:', err))
 }

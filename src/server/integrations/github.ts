@@ -11,7 +11,7 @@ import type { ApiContext } from '../api-routes.js'
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN
 const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET
-const GITHUB_REPO = process.env.GITHUB_REPO // e.g. "acme/clawd-office"
+const GITHUB_REPO = process.env.GITHUB_REPO // e.g. "acme/agent-office"
 
 const API_BASE = 'https://api.github.com'
 
@@ -61,9 +61,9 @@ function createIssueForTask(event: OfficeEvent & { type: 'task.completed' }): vo
   ghFetch(`/repos/${GITHUB_REPO}/issues`, {
     method: 'POST',
     body: JSON.stringify({
-      title: `[Clawd] Task completed: ${event.title}`,
+      title: `[Agent Office] Task completed: ${event.title}`,
       body: `Agent \`${event.agentId}\` completed assignment \`${event.assignmentId}\`.\n\n**Result**\n${event.result.slice(0, 2000)}`,
-      labels: ['clawd-office'],
+      labels: ['agent-office'],
     }),
   }).catch((err) => console.error('[github] create issue failed:', err))
 }

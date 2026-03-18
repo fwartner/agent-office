@@ -83,11 +83,11 @@ describe('App — with agents (via API)', () => {
     expect(screen.getByText('Presence')).toBeInTheDocument()
   })
 
-  it('tab navigation has Agents, Feed, Tasks', () => {
+  it('tab navigation has Tasks, Feed, Chat', () => {
     renderApp()
-    expect(screen.getByRole('tab', { name: 'Agents' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Tasks/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Feed' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Tasks/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument()
   })
 
   it('tab navigation switches tabs', () => {
@@ -97,16 +97,15 @@ describe('App — with agents (via API)', () => {
     expect(feedTab).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('Add Agent button is present', () => {
+  it('Add Agent button is present in left sidebar', () => {
     renderApp()
-    expect(screen.getByText('+ Add Agent')).toBeInTheDocument()
+    expect(screen.getByText('+ Agent')).toBeInTheDocument()
   })
 
   it('Add Agent button opens create form', () => {
     renderApp()
-    // Deselect agent first
     fireEvent.keyDown(window, { key: 'Escape' })
-    const addBtn = screen.getByText('+ Add Agent')
+    const addBtn = screen.getByText('+ Agent')
     fireEvent.click(addBtn)
     expect(screen.getByText('Create agent')).toBeInTheDocument()
   })
@@ -122,9 +121,9 @@ describe('App — empty office (seed fallback)', () => {
     expect(screen.getByText('Agent Office')).toBeInTheDocument()
   })
 
-  it('shows empty roster message', () => {
+  it('left sidebar is present', () => {
     renderApp()
-    expect(screen.getByText('No agents yet. Add one to get started.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Room navigation')).toBeInTheDocument()
   })
 
   it('does not show welcome overlay while on seed data', () => {

@@ -15,9 +15,9 @@ export const MAX_MESSAGE_LEN = 2000
 export const VALID_PRESENCE = ['off_hours', 'available', 'active', 'in_meeting', 'paused', 'blocked'] as const
 export type PresenceState = typeof VALID_PRESENCE[number]
 
-export const AGENT_PATCH_FIELDS = ['presence', 'focus', 'roomId', 'criticalTask', 'collaborationMode', 'xPct', 'yPct', 'systemPrompt'] as const
+export const AGENT_PATCH_FIELDS = ['presence', 'focus', 'roomId', 'criticalTask', 'collaborationMode', 'xPct', 'yPct', 'systemPrompt', 'runtimeMaxTurns', 'runtimeTimeoutSec', 'runtimeWorkingDir', 'runtimeAllowedTools', 'runtimeMode'] as const
 export const AGENT_ID_RE = /^[a-z0-9-]+$/
-export const ASSIGNMENT_STATUSES = ['queued', 'routed', 'active', 'done', 'blocked'] as const
+export const ASSIGNMENT_STATUSES = ['queued', 'routed', 'active', 'done', 'blocked', 'cancelled'] as const
 export const VALID_ROUTING = ['agent_runtime', 'work_tracker', 'both'] as const
 export const VALID_PRIORITY = ['low', 'medium', 'high'] as const
 export const VALID_DECISION_STATUSES = ['proposed', 'accepted', 'rejected'] as const
@@ -32,6 +32,11 @@ export interface AgentPatch {
   xPct?: number
   yPct?: number
   systemPrompt?: string
+  runtimeMaxTurns?: number
+  runtimeTimeoutSec?: number
+  runtimeWorkingDir?: string
+  runtimeAllowedTools?: string
+  runtimeMode?: string
 }
 
 export function sanitizePatch(raw: Record<string, unknown>): AgentPatch {

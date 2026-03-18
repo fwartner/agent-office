@@ -140,6 +140,7 @@ export function createJsonContext(stateFile: string, resultsDir: string): ApiCon
           taskBrief: input.taskBrief ? String(input.taskBrief) : '',
           priority: String(input.priority),
           routingTarget: String(input.routingTarget),
+          source: input.source ? String(input.source) : 'office_ui',
           status: 'queued',
           createdAt: now(),
         }

@@ -74,6 +74,23 @@ export async function startBot(token: string, ctx: ApiContext): Promise<void> {
     await handleCallback(tgCtx)
   })
 
+  // Forward unhandled text messages to office chat
+  bot.on('message:text', async (tgCtx) => {
+    const text = tgCtx.message.text?.trim()
+    if (!text || text.startsWith('/')) return
+    try {
+      const senderName = tgCtx.from?.first_name ?? 'Telegram User'
+      await ctx.sendMessage({
+        fromAgentId: '__telegram__',
+        roomId: 'commons',
+        message: `[${senderName}] ${text}`,
+      })
+      await tgCtx.reply('Message sent to office chat.')
+    } catch {
+      await tgCtx.reply('Failed to send message.')
+    }
+  })
+
   // Error handler
   bot.catch((err) => {
     console.error('[bot] Error:', err.message)

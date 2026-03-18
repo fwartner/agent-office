@@ -1,7 +1,44 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useRef, useCallback, useEffect, type FormEvent } from 'react'
 import { type PresenceState } from './data'
 import { defaultSettings, defaultPresenceColors } from './data'
 import { useOffice } from './office-provider'
+import { SlackSettings, GitHubSettings, LinearSettings, TelegramSettings } from './components/sidebar/IntegrationSettings'
+
+type SaveStatus = 'idle' | 'saving' | 'saved'
+
+function useDebouncedSave(
+  saveFn: (patch: Record<string, unknown>) => Promise<boolean>,
+  delay = 300
+): { save: (patch: Record<string, unknown>) => void; status: SaveStatus } {
+  const [status, setStatus] = useState<SaveStatus>('idle')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const save = useCallback((patch: Record<string, unknown>) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+
+    timerRef.current = setTimeout(async () => {
+      setStatus('saving')
+      const ok = await saveFn(patch)
+      if (ok) {
+        setStatus('saved')
+        savedTimerRef.current = setTimeout(() => setStatus('idle'), 1500)
+      } else {
+        setStatus('idle')
+      }
+    }, delay)
+  }, [saveFn, delay])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    }
+  }, [])
+
+  return { save, status }
+}
 
 const presenceLabels: Record<PresenceState, string> = {
   off_hours: 'Off hours',
@@ -21,6 +58,7 @@ export function SettingsPanel() {
       <WorkdaySection policy={workdayPolicy} onSave={updateSettings} />
       <RoomsCrudSection rooms={rooms} onSave={updateRoom} onCreate={createRoom} onDelete={deleteRoom} />
       <WebhooksSection webhooks={webhooks} onCreate={createWebhook} onDelete={deleteWebhook} />
+      <IntegrationsSection />
       <ThemeSection colors={officeSettings.theme.presenceColors} onSave={updateSettings} />
       <DangerSection
         onReset={async () => {
@@ -40,36 +78,45 @@ export function SettingsPanel() {
   )
 }
 
+function SaveIndicator({ status }: { status: SaveStatus }) {
+  if (status === 'idle') return null
+  return (
+    <span className="settings-save-indicator" data-status={status}>
+      {status === 'saving' ? 'Saving...' : 'Saved'}
+    </span>
+  )
+}
+
 function GeneralSection({ officeName, onSave }: {
   officeName: string
   onSave: (patch: { officeName: string }) => Promise<boolean>
 }) {
   const [name, setName] = useState(officeName)
-  const [saving, setSaving] = useState(false)
+  const { save, status } = useDebouncedSave(onSave as (patch: Record<string, unknown>) => Promise<boolean>, 300)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    await onSave({ officeName: name })
-    setSaving(false)
+  // Sync from props when settings arrive via SSE from another client
+  useEffect(() => { setName(officeName) }, [officeName])
+
+  function handleChange(value: string) {
+    setName(value)
+    save({ officeName: value })
   }
 
   return (
     <details className="settings-section" open>
       <summary>General</summary>
-      <form className="settings-section-body" onSubmit={handleSubmit}>
-        <label className="settings-label" htmlFor="settings-office-name">Office name</label>
+      <div className="settings-section-body">
+        <label className="settings-label" htmlFor="settings-office-name">
+          Office name <SaveIndicator status={status} />
+        </label>
         <input
           id="settings-office-name"
           className="assign-input"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e => handleChange(e.target.value)}
           maxLength={100}
         />
-        <button type="submit" className="assign-submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-      </form>
+      </div>
     </details>
   )
 }
@@ -83,40 +130,48 @@ function WorkdaySection({ policy, onSave }: {
   const [hours, setHours] = useState(policy.hours)
   const [pauseRule, setPauseRule] = useState(policy.pauseRule)
   const [sharedRule, setSharedRule] = useState(policy.sharedPlaceRule)
-  const [saving, setSaving] = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    await onSave({
-      workdayPolicy: { timezone: tz, days, hours, pauseRule, sharedPlaceRule: sharedRule }
-    })
-    setSaving(false)
+  // Sync from props (SSE updates)
+  useEffect(() => { setTz(policy.timezone) }, [policy.timezone])
+  useEffect(() => { setDays(policy.days) }, [policy.days])
+  useEffect(() => { setHours(policy.hours) }, [policy.hours])
+  useEffect(() => { setPauseRule(policy.pauseRule) }, [policy.pauseRule])
+  useEffect(() => { setSharedRule(policy.sharedPlaceRule) }, [policy.sharedPlaceRule])
+
+  const { save, status } = useDebouncedSave(
+    (patch) => onSave(patch as { workdayPolicy: Record<string, string> }),
+    500
+  )
+
+  // Use refs to build full policy in change handler without stale closures
+  const valuesRef = useRef({ tz, days, hours, pauseRule, sharedRule })
+  valuesRef.current = { tz, days, hours, pauseRule, sharedRule }
+
+  function handleChange(field: string, value: string, setter: (v: string) => void) {
+    setter(value)
+    const v = { ...valuesRef.current, [field]: value }
+    save({ workdayPolicy: { timezone: v.tz, days: v.days, hours: v.hours, pauseRule: v.pauseRule, sharedPlaceRule: v.sharedRule } })
   }
 
   return (
     <details className="settings-section">
-      <summary>Workday Policy</summary>
-      <form className="settings-section-body" onSubmit={handleSubmit}>
+      <summary>Workday Policy <SaveIndicator status={status} /></summary>
+      <div className="settings-section-body">
         <label className="settings-label" htmlFor="settings-tz">Timezone</label>
-        <input id="settings-tz" className="assign-input" value={tz} onChange={e => setTz(e.target.value)} />
+        <input id="settings-tz" className="assign-input" value={tz} onChange={e => handleChange('tz', e.target.value, setTz)} />
 
         <label className="settings-label" htmlFor="settings-days">Office days</label>
-        <input id="settings-days" className="assign-input" value={days} onChange={e => setDays(e.target.value)} />
+        <input id="settings-days" className="assign-input" value={days} onChange={e => handleChange('days', e.target.value, setDays)} />
 
         <label className="settings-label" htmlFor="settings-hours">Office hours</label>
-        <input id="settings-hours" className="assign-input" value={hours} onChange={e => setHours(e.target.value)} />
+        <input id="settings-hours" className="assign-input" value={hours} onChange={e => handleChange('hours', e.target.value, setHours)} />
 
         <label className="settings-label" htmlFor="settings-pause">Pause rule</label>
-        <textarea id="settings-pause" className="assign-input" rows={2} value={pauseRule} onChange={e => setPauseRule(e.target.value)} />
+        <textarea id="settings-pause" className="assign-input" rows={2} value={pauseRule} onChange={e => handleChange('pauseRule', e.target.value, setPauseRule)} />
 
         <label className="settings-label" htmlFor="settings-shared">Shared place rule</label>
-        <textarea id="settings-shared" className="assign-input" rows={2} value={sharedRule} onChange={e => setSharedRule(e.target.value)} />
-
-        <button type="submit" className="assign-submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-      </form>
+        <textarea id="settings-shared" className="assign-input" rows={2} value={sharedRule} onChange={e => handleChange('sharedRule', e.target.value, setSharedRule)} />
+      </div>
     </details>
   )
 }
@@ -338,41 +393,60 @@ function RoomEditForm({ room, onSave }: {
   )
 }
 
+function IntegrationsSection() {
+  return (
+    <details className="settings-section">
+      <summary>Integrations</summary>
+      <div className="settings-section-body">
+        <SlackSettings />
+        <GitHubSettings />
+        <LinearSettings />
+        <TelegramSettings />
+      </div>
+    </details>
+  )
+}
+
 function ThemeSection({ colors, onSave }: {
   colors: Record<PresenceState, string>
   onSave: (patch: { theme: { presenceColors: Record<string, string> } }) => Promise<boolean>
 }) {
   const [localColors, setLocalColors] = useState(colors)
-  const [saving, setSaving] = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    await onSave({ theme: { presenceColors: localColors } })
-    setSaving(false)
+  // Sync from props (SSE updates)
+  useEffect(() => { setLocalColors(colors) }, [colors])
+
+  const { save, status } = useDebouncedSave(
+    (patch) => onSave(patch as { theme: { presenceColors: Record<string, string> } }),
+    300
+  )
+
+  function handleColorChange(state: PresenceState, value: string) {
+    setLocalColors(prev => {
+      const next = { ...prev, [state]: value }
+      save({ theme: { presenceColors: next } })
+      return next
+    })
   }
 
   return (
     <details className="settings-section">
-      <summary>Theme</summary>
-      <form className="settings-section-body" onSubmit={handleSubmit}>
+      <summary>Theme <SaveIndicator status={status} /></summary>
+      <div className="settings-section-body">
         {(Object.keys(presenceLabels) as PresenceState[]).map(state => (
           <div key={state} className="settings-color-row">
             <input
               type="color"
               className="settings-color-input"
               value={localColors[state]}
-              onChange={e => setLocalColors(prev => ({ ...prev, [state]: e.target.value }))}
+              onChange={e => handleColorChange(state, e.target.value)}
               aria-label={`Color for ${presenceLabels[state]}`}
             />
             <span className="settings-color-label">{presenceLabels[state]}</span>
             <span className="settings-color-hex">{localColors[state]}</span>
           </div>
         ))}
-        <button type="submit" className="assign-submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save colors'}
-        </button>
-      </form>
+      </div>
     </details>
   )
 }

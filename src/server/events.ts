@@ -13,7 +13,8 @@ export type OfficeEvent =
   | { type: 'task.failed'; assignmentId: string; agentId: string; title: string; error: string }
   | { type: 'decision.created'; decisionId: string; title: string }
   | { type: 'decision.updated'; decisionId: string; title: string; status: string }
-  | { type: 'message.sent'; messageId: string; fromAgentId: string; roomId: string | null }
+  | { type: 'message.sent'; messageId: string; fromAgentId: string; roomId: string | null; message?: string }
+  | { type: 'settings.changed'; settings: unknown }
 
 const bus = new EventEmitter()
 bus.setMaxListeners(20)

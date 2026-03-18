@@ -7,7 +7,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { registerAgent, unregisterAgent, dispatchTask, getAllAgentStatuses, startTaskQueue, shutdownAll } from './agent-runtime.mjs'
+import { registerAgent, unregisterAgent, dispatchTask, cancelTask, getAllAgentStatuses, startTaskQueue, shutdownAll, setProjectRoot } from './agent-runtime.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.join(__dirname, 'dist')
@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT || (process.argv.includes('--port') ? proce
 const MAX_BODY_SIZE = 1_048_576 // 1MB
 const startTime = Date.now()
 
+setProjectRoot(__dirname)
 const ALLOWED_ROOTS = [DIST, path.join(__dirname, 'assets')]
 const MIME = {
   '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
@@ -26,19 +27,34 @@ const MIME = {
 
 // ── Import shared API layer ─────────────────────────
 const {
-  routeRequest, createJsonContext, initWebhookDispatcher,
+  routeRequest, createJsonContext, createDrizzleContext, initWebhookDispatcher,
   initSlack, initGitHub, githubWebhookHandler,
   initLinear, linearWebhookHandler,
+  initSSE, addClient, removeClient, shutdownSSE, broadcastAgentOutput, broadcastSettingsChanged,
 } = await import('./dist-server/server/index.js')
 const { startBot, stopBot } = await import('./dist-server/bot/index.js')
 
-// ── Build ApiContext ─────────────────────────────────
-const apiCtx = createJsonContext(STATE_FILE, RESULTS_DIR)
+// ── Build ApiContext (Drizzle DB or JSON file fallback) ──
+let apiCtx
+try {
+  const { getConnection } = await import('./dist-server/db/index.js')
+  const { runMigrations } = await import('./dist-server/db/migrate.js')
+  const { seedDatabase } = await import('./dist-server/db/seed.js')
+  const conn = await getConnection()
+  await runMigrations(conn)
+  await seedDatabase(conn)
+  apiCtx = createDrizzleContext(conn.db, conn.schema, RESULTS_DIR)
+  console.log(`[db] Using ${conn.dialect} database`)
+} catch (err) {
+  console.warn(`[db] Drizzle init failed, falling back to JSON file: ${err.message}`)
+  apiCtx = createJsonContext(STATE_FILE, RESULTS_DIR)
+}
 
 // Wire agent runtime hooks
-apiCtx.registerAgentRuntime = (id, name, role, systemPrompt) => registerAgent(id, name, role, systemPrompt)
+apiCtx.registerAgentRuntime = (id, name, role, systemPrompt, runtimeConfig) => registerAgent(id, name, role, systemPrompt, runtimeConfig)
 apiCtx.unregisterAgentRuntime = (id) => unregisterAgent(id)
 apiCtx.getAgentRuntimeStatuses = () => getAllAgentStatuses()
+apiCtx.cancelAgentTask = (agentId) => cancelTask(agentId)
 
 function createStateCallbacks() {
   return {
@@ -57,6 +73,15 @@ function createStateCallbacks() {
       await apiCtx.updateAssignment(assignmentId, 'done', result)
       await apiCtx.patchAgent(String(assignment.targetAgentId), { presence: 'available', focus: `Completed: ${assignment.taskTitle}` })
       await apiCtx.appendActivity({ kind: 'assignment', text: `${assignment.targetAgentId} completed "${assignment.taskTitle}"`, agentId: assignment.targetAgentId })
+      // If chat-sourced, post the result as a chat message from the agent
+      if (assignment.source === 'chat' && result) {
+        try {
+          // Look up agent's current room
+          const agentSnap = snap.agents.find(a => a.id === assignment.targetAgentId)
+          const roomId = agentSnap?.roomId || 'commons'
+          await apiCtx.sendMessage({ fromAgentId: String(assignment.targetAgentId), roomId: String(roomId), message: result })
+        } catch { /* best-effort */ }
+      }
     },
     async onError(assignmentId, error) {
       const snap = await apiCtx.getSnapshot()
@@ -65,6 +90,13 @@ function createStateCallbacks() {
       await apiCtx.updateAssignment(assignmentId, 'blocked')
       await apiCtx.patchAgent(String(assignment.targetAgentId), { presence: 'blocked', focus: `Error: ${error.slice(0, 100)}` })
       await apiCtx.appendActivity({ kind: 'system', text: `Task "${assignment.taskTitle}" failed: ${error.slice(0, 200)}`, agentId: assignment.targetAgentId })
+    },
+    async onOutput(assignmentId, chunk) {
+      const snap = await apiCtx.getSnapshot()
+      const assignment = snap.assignments.find(a => a.id === assignmentId)
+      if (assignment) {
+        broadcastAgentOutput(String(assignment.targetAgentId), assignmentId, chunk)
+      }
     },
   }
 }
@@ -85,6 +117,14 @@ initLinear(apiCtx)
 apiCtx.integrationWebhooks = {
   github: githubWebhookHandler(apiCtx),
   linear: linearWebhookHandler(apiCtx),
+}
+
+// Init SSE streaming
+initSSE()
+
+// Wire settings change broadcast
+apiCtx.onSettingsChanged = (settings) => {
+  broadcastSettingsChanged(settings)
 }
 
 // ── HTTP helpers ─────────────────────────────────────
@@ -145,6 +185,22 @@ const server = http.createServer(async (req, res) => {
       }
       const reqHeaders = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))
       const result = await routeRequest(apiCtx, req.method, url.pathname, parsed, url.searchParams, startTime, rawBody, reqHeaders)
+      if (result.handled && result.sse) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+        })
+        const clientId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        addClient({
+          id: clientId,
+          write: (data) => { try { res.write(data); return true } catch { return false } },
+          close: () => { try { res.end() } catch { /* ignore */ } },
+        })
+        res.on('close', () => removeClient(clientId))
+        return
+      }
       if (result.handled && result.response) {
         jsonResponse(res, result.response.status, result.response.body)
         return
@@ -196,7 +252,13 @@ server.listen(PORT, '0.0.0.0', async () => {
     const state = await apiCtx.getSnapshot()
     const agents = state.agents || []
     for (const agent of agents) {
-      registerAgent(String(agent.id), String(agent.name || agent.id), String(agent.role || ''), String(agent.systemPrompt || ''))
+      registerAgent(String(agent.id), String(agent.name || agent.id), String(agent.role || ''), String(agent.systemPrompt || ''), {
+        maxTurns: agent.runtimeMaxTurns ?? 3,
+        timeoutSec: agent.runtimeTimeoutSec ?? 300,
+        workingDir: agent.runtimeWorkingDir ?? undefined,
+        allowedTools: agent.runtimeAllowedTools ?? undefined,
+        mode: agent.runtimeMode ?? 'full',
+      })
     }
     // Re-queue stuck active assignments
     const assignments = state.assignments || []
@@ -234,17 +296,12 @@ server.listen(PORT, '0.0.0.0', async () => {
     }
   }
 
-  // Init integrations
-  try {
-    const slackMod = await import('./dist-server/server/index.js')
-    // Integrations subscribe to events automatically via their init()
-    // They're loaded as part of the server index bundle
-  } catch { /* optional */ }
 })
 
 // ── Graceful shutdown ────────────────────────────────
 function shutdown(signal) {
   console.log(`\n${signal} received — shutting down gracefully`)
+  shutdownSSE()
   shutdownAll()
   stopBot()
   server.close(() => {

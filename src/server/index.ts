@@ -4,11 +4,13 @@
  */
 export { routeRequest, type ApiContext, type ApiResponse, type RouteResult, type SnapshotData } from './api-routes.js'
 export { createJsonContext } from './json-context.js'
+export { createDrizzleContext } from './drizzle-context.js'
 export { emit, on, onAll, off, eventBus } from './events.js'
 export { initWebhookDispatcher } from './webhook-dispatcher.js'
 export { init as initSlack } from './integrations/slack.js'
 export { init as initGitHub, webhookHandler as githubWebhookHandler } from './integrations/github.js'
 export { init as initLinear, webhookHandler as linearWebhookHandler } from './integrations/linear.js'
+export { initSSE, addClient, removeClient, shutdownSSE, broadcastAgentOutput, broadcastSettingsChanged, getClientCount } from './sse.js'
 export {
   sanitizePatch, validateObject, findMissing, generateId,
   VALID_PRESENCE, VALID_ROUTING, VALID_PRIORITY, VALID_DECISION_STATUSES,

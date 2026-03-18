@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS office_decisions (
 
 CREATE TABLE IF NOT EXISTS office_messages (
   id TEXT PRIMARY KEY,
-  from_agent_id TEXT NOT NULL REFERENCES office_agents(id) ON DELETE CASCADE,
-  to_agent_id TEXT REFERENCES office_agents(id) ON DELETE CASCADE,
+  from_agent_id TEXT NOT NULL,
+  to_agent_id TEXT,
   room_id TEXT REFERENCES office_rooms(id) ON DELETE CASCADE,
   message TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -124,7 +124,23 @@ CREATE INDEX IF NOT EXISTS office_world_entities_room_id_idx ON office_world_ent
 CREATE INDEX IF NOT EXISTS office_messages_room_id_idx ON office_messages (room_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS office_messages_to_agent_idx ON office_messages (to_agent_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS office_webhook_logs_webhook_id_idx ON office_webhook_logs (webhook_id, delivered_at DESC);
+
+CREATE TABLE IF NOT EXISTS office_integrations (
+  name TEXT PRIMARY KEY,
+  config TEXT NOT NULL DEFAULT '{}',
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `
+
+/** SQLite ALTER TABLE additions — idempotent, silently ignores if column exists */
+const SQLITE_ALTER = [
+  'ALTER TABLE office_agents ADD COLUMN runtime_max_turns INTEGER DEFAULT 3',
+  'ALTER TABLE office_agents ADD COLUMN runtime_timeout_sec INTEGER DEFAULT 300',
+  'ALTER TABLE office_agents ADD COLUMN runtime_working_dir TEXT',
+  'ALTER TABLE office_agents ADD COLUMN runtime_allowed_tools TEXT',
+  "ALTER TABLE office_agents ADD COLUMN runtime_mode TEXT DEFAULT 'full'",
+]
 
 const POSTGRES_DDL = `
 CREATE TABLE IF NOT EXISTS office_agents (
@@ -212,8 +228,8 @@ CREATE TABLE IF NOT EXISTS office_decisions (
 
 CREATE TABLE IF NOT EXISTS office_messages (
   id TEXT PRIMARY KEY,
-  from_agent_id TEXT NOT NULL REFERENCES office_agents(id) ON DELETE CASCADE,
-  to_agent_id TEXT REFERENCES office_agents(id) ON DELETE CASCADE,
+  from_agent_id TEXT NOT NULL,
+  to_agent_id TEXT,
   room_id TEXT REFERENCES office_rooms(id) ON DELETE CASCADE,
   message TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -242,7 +258,23 @@ CREATE INDEX IF NOT EXISTS office_world_entities_room_id_idx ON office_world_ent
 CREATE INDEX IF NOT EXISTS office_messages_room_id_idx ON office_messages (room_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS office_messages_to_agent_idx ON office_messages (to_agent_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS office_webhook_logs_webhook_id_idx ON office_webhook_logs (webhook_id, delivered_at DESC);
+
+CREATE TABLE IF NOT EXISTS office_integrations (
+  name TEXT PRIMARY KEY,
+  config TEXT NOT NULL DEFAULT '{}',
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `
+
+/** Postgres ALTER TABLE additions — idempotent, silently ignores if column exists */
+const POSTGRES_ALTER = [
+  'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_max_turns INTEGER DEFAULT 3',
+  'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_timeout_sec INTEGER DEFAULT 300',
+  'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_working_dir TEXT',
+  'ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_allowed_tools TEXT',
+  "ALTER TABLE office_agents ADD COLUMN IF NOT EXISTS runtime_mode TEXT DEFAULT 'full'",
+]
 
 export async function runMigrations(conn: DbConnection): Promise<void> {
   const ddl = conn.dialect === 'postgres' ? POSTGRES_DDL : SQLITE_DDL
@@ -251,21 +283,23 @@ export async function runMigrations(conn: DbConnection): Promise<void> {
     .map(s => s.trim())
     .filter(s => s.length > 0)
 
+  const { sql } = await import('drizzle-orm')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = conn.db as any
   if (conn.dialect === 'sqlite') {
-    // better-sqlite3 driver — access raw sqlite instance
-    const rawDb = (conn.db as { session?: unknown })
-    // For better-sqlite3 drizzle, we need the underlying database
-    // The drizzle instance wraps it — access via internal
-    const sqliteDb = (conn as unknown as { _sqliteDb?: unknown })
-    // Actually, let's use sql tagged template from drizzle
-    const { sql } = await import('drizzle-orm')
     for (const stmt of statements) {
-      ;(conn.db as { run: (query: unknown) => void }).run(sql.raw(stmt))
+      db.run(sql.raw(stmt))
+    }
+    // Apply ALTER TABLE additions (SQLite has no IF NOT EXISTS for ADD COLUMN)
+    for (const alter of SQLITE_ALTER) {
+      try { db.run(sql.raw(alter)) } catch { /* column already exists */ }
     }
   } else {
-    const { sql } = await import('drizzle-orm')
     for (const stmt of statements) {
-      await (conn.db as { execute: (query: unknown) => Promise<unknown> }).execute(sql.raw(stmt))
+      await db.execute(sql.raw(stmt))
+    }
+    for (const alter of POSTGRES_ALTER) {
+      await db.execute(sql.raw(alter))
     }
   }
 

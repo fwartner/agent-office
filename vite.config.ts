@@ -3,14 +3,15 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { registerAgent, unregisterAgent, dispatchTask, getAllAgentStatuses, startTaskQueue, shutdownAll } from './agent-runtime.mjs'
+import { registerAgent, unregisterAgent, dispatchTask, cancelTask, getAllAgentStatuses, startTaskQueue, shutdownAll, setProjectRoot } from './agent-runtime.mjs'
 
+setProjectRoot(__dirname)
 const STATE_FILE = path.resolve(__dirname, 'state/office-snapshot.json')
 const RESULTS_DIR = path.resolve(__dirname, 'state/results')
 const MAX_BODY_SIZE = 1_048_576
 const startTime = Date.now()
 
-function readBody(req: IncomingMessage): Promise<unknown> {
+function readBody(req: IncomingMessage): Promise<{ parsed: unknown; raw: string }> {
   return new Promise((resolve, reject) => {
     let body = ''
     let size = 0
@@ -22,8 +23,8 @@ function readBody(req: IncomingMessage): Promise<unknown> {
     })
     req.on('end', () => {
       clearTimeout(timeout)
-      if (!body) { resolve(null); return }
-      try { resolve(JSON.parse(body)) } catch (e) { reject(e) }
+      if (!body) { resolve({ parsed: null, raw: '' }); return }
+      try { resolve({ parsed: JSON.parse(body), raw: body }) } catch (e) { reject(e) }
     })
     req.on('error', (e) => { clearTimeout(timeout); reject(e) })
   })
@@ -33,6 +34,11 @@ function officeApiPlugin(): Plugin {
   let apiReady = false
   let routeRequest: Function
   let apiCtx: Record<string, Function>
+  let sseAddClient: Function
+  let sseRemoveClient: Function
+  let sseBroadcastAgentOutput: Function
+  let sseBroadcastSettingsChanged: Function
+  let sseShutdown: Function
 
   return {
     name: 'office-api',
@@ -47,23 +53,68 @@ function officeApiPlugin(): Plugin {
           try {
             const serverMod = await import('./dist-server/server/index.js')
             routeRequest = serverMod.routeRequest
-            apiCtx = serverMod.createJsonContext(STATE_FILE, RESULTS_DIR)
+
+            // Try Drizzle DB (SQLite), fall back to JSON file
+            try {
+              const { getConnection } = await import('./dist-server/db/index.js')
+              const { runMigrations } = await import('./dist-server/db/migrate.js')
+              const { seedDatabase } = await import('./dist-server/db/seed.js')
+              const conn = await getConnection()
+              await runMigrations(conn)
+              await seedDatabase(conn)
+              apiCtx = serverMod.createDrizzleContext(conn.db, conn.schema, RESULTS_DIR)
+              console.log(`[dev] Using ${conn.dialect} database`)
+            } catch (dbErr) {
+              console.warn(`[dev] Drizzle init failed, using JSON file: ${(dbErr as Error).message}`)
+              apiCtx = serverMod.createJsonContext(STATE_FILE, RESULTS_DIR)
+            }
 
             // Wire agent runtime
-            apiCtx.registerAgentRuntime = (id: string, name: string, role: string, sp: string) => registerAgent(id, name, role, sp)
+            apiCtx.registerAgentRuntime = (id: string, name: string, role: string, sp: string, rc?: Record<string, unknown>) => registerAgent(id, name, role, sp, rc)
             apiCtx.unregisterAgentRuntime = (id: string) => unregisterAgent(id)
             apiCtx.getAgentRuntimeStatuses = () => getAllAgentStatuses()
+            apiCtx.cancelAgentTask = (agentId: string) => cancelTask(agentId)
             apiCtx.dispatchToRuntime = (agentId: string, assignment: Record<string, unknown>) => {
-              dispatchTask(agentId, assignment, createDevStateCallbacks(apiCtx))
+              dispatchTask(agentId, assignment, createDevStateCallbacks(apiCtx, sseBroadcastAgentOutput))
             }
 
             serverMod.initWebhookDispatcher(apiCtx)
+
+            // Init integrations
+            serverMod.initSlack(apiCtx)
+            serverMod.initGitHub(apiCtx)
+            serverMod.initLinear(apiCtx)
+
+            // Register inbound webhook handlers
+            apiCtx.integrationWebhooks = {
+              github: serverMod.githubWebhookHandler(apiCtx),
+              linear: serverMod.linearWebhookHandler(apiCtx),
+            }
+
+            // Init SSE streaming
+            serverMod.initSSE()
+            sseAddClient = serverMod.addClient
+            sseRemoveClient = serverMod.removeClient
+            sseBroadcastAgentOutput = serverMod.broadcastAgentOutput
+            sseBroadcastSettingsChanged = serverMod.broadcastSettingsChanged
+            sseShutdown = serverMod.shutdownSSE
+
+            // Wire settings change broadcast
+            apiCtx.onSettingsChanged = (settings: Record<string, unknown>) => {
+              if (sseBroadcastSettingsChanged) sseBroadcastSettingsChanged(settings)
+            }
 
             // Register existing agents
             try {
               const snap = await apiCtx.getSnapshot()
               for (const agent of (snap.agents || [])) {
-                registerAgent(String(agent.id), String(agent.name || agent.id), String(agent.role || ''), String(agent.systemPrompt || ''))
+                registerAgent(String(agent.id), String(agent.name || agent.id), String(agent.role || ''), String(agent.systemPrompt || ''), {
+                  maxTurns: agent.runtimeMaxTurns ?? 3,
+                  timeoutSec: agent.runtimeTimeoutSec ?? 300,
+                  workingDir: agent.runtimeWorkingDir ?? undefined,
+                  allowedTools: agent.runtimeAllowedTools ?? undefined,
+                  mode: agent.runtimeMode ?? 'full',
+                })
               }
             } catch { /* empty state */ }
 
@@ -111,11 +162,31 @@ function officeApiPlugin(): Plugin {
         }
 
         try {
-          let body = null
+          let parsed = null
+          let rawBody = ''
           if (['POST', 'PUT', 'PATCH'].includes(req.method || '')) {
-            body = await readBody(req)
+            const { parsed: p, raw } = await readBody(req)
+            parsed = p
+            rawBody = raw
           }
-          const result = await routeRequest(apiCtx, req.method, url.pathname, body, url.searchParams, startTime)
+          const reqHeaders = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))
+          const result = await routeRequest(apiCtx, req.method, url.pathname, parsed, url.searchParams, startTime, rawBody, reqHeaders)
+          if (result.handled && result.sse) {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+              'Access-Control-Allow-Origin': '*',
+            })
+            const clientId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+            sseAddClient({
+              id: clientId,
+              write: (data: string) => { try { res.write(data); return true } catch { return false } },
+              close: () => { try { res.end() } catch { /* ignore */ } },
+            })
+            res.on('close', () => sseRemoveClient(clientId))
+            return
+          }
           if (result.handled && result.response) {
             res.writeHead(result.response.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
             res.end(JSON.stringify(result.response.body))
@@ -131,12 +202,12 @@ function officeApiPlugin(): Plugin {
         next()
       })
 
-      server.httpServer?.on('close', () => { shutdownAll() })
+      server.httpServer?.on('close', () => { if (sseShutdown) sseShutdown(); shutdownAll() })
     }
   }
 }
 
-function createDevStateCallbacks(ctx: Record<string, Function>) {
+function createDevStateCallbacks(ctx: Record<string, Function>, broadcastOutput?: Function) {
   return {
     async onStart(assignmentId: string) {
       try {
@@ -156,6 +227,14 @@ function createDevStateCallbacks(ctx: Record<string, Function>) {
         await ctx.updateAssignment(assignmentId, 'done', result)
         await ctx.patchAgent(String(assignment.targetAgentId), { presence: 'available', focus: `Completed: ${assignment.taskTitle}` })
         await ctx.appendActivity({ kind: 'assignment', text: `${assignment.targetAgentId} completed "${assignment.taskTitle}"`, agentId: assignment.targetAgentId })
+        // If chat-sourced, post the result as a chat message from the agent
+        if (assignment.source === 'chat' && result) {
+          try {
+            const agentSnap = (snap.agents || []).find((a: Record<string, string>) => a.id === assignment.targetAgentId)
+            const roomId = agentSnap?.roomId || 'commons'
+            await ctx.sendMessage({ fromAgentId: String(assignment.targetAgentId), roomId: String(roomId), message: result })
+          } catch { /* best-effort */ }
+        }
       } catch (e) { console.error('[dev] onComplete error:', e) }
     },
     async onError(assignmentId: string, error: string) {
@@ -167,6 +246,16 @@ function createDevStateCallbacks(ctx: Record<string, Function>) {
         await ctx.patchAgent(String(assignment.targetAgentId), { presence: 'blocked', focus: `Error: ${error.slice(0, 100)}` })
         await ctx.appendActivity({ kind: 'system', text: `Task "${assignment.taskTitle}" failed: ${error.slice(0, 200)}`, agentId: assignment.targetAgentId })
       } catch (e) { console.error('[dev] onError error:', e) }
+    },
+    async onOutput(assignmentId: string, chunk: string) {
+      if (!broadcastOutput) return
+      try {
+        const snap = await ctx.getSnapshot()
+        const assignment = (snap.assignments || []).find((a: Record<string, string>) => a.id === assignmentId)
+        if (assignment) {
+          broadcastOutput(String(assignment.targetAgentId), assignmentId, chunk)
+        }
+      } catch { /* ignore */ }
     },
   }
 }

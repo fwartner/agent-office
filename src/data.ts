@@ -17,6 +17,11 @@ export interface AgentCard {
   criticalTask: boolean
   collaborationMode: string
   systemPrompt?: string
+  runtimeMaxTurns?: number
+  runtimeTimeoutSec?: number
+  runtimeWorkingDir?: string
+  runtimeAllowedTools?: string
+  runtimeMode?: string
   /** Is this agent an external collaborator (not firm office staff)? */
   external?: boolean
 }

@@ -60,6 +60,16 @@ async function renderApp() {
   return result!
 }
 
+/** Select Forge by clicking in the left sidebar tree */
+function selectForge() {
+  const forgeButtons = screen.getAllByText('Forge')
+  const treeButton = forgeButtons.find(el => el.closest('.tree-agent-row'))
+  if (treeButton) {
+    const row = treeButton.closest('.tree-agent-row') as HTMLElement
+    fireEvent.click(row)
+  }
+}
+
 describe('Accessibility', () => {
   it('skip link is present', async () => {
     await renderApp()
@@ -81,13 +91,15 @@ describe('Accessibility', () => {
     expect(tablist).toBeInTheDocument()
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs.length).toBe(7)
+    // Right sidebar: Tasks, Feed, Chat, Votes, Settings (gear icon) = 5 tabs
+    expect(tabs.length).toBe(5)
   })
 
   it('active tab has aria-selected=true', async () => {
     await renderApp()
-    const agentsTab = screen.getByRole('tab', { name: 'Agents' })
-    expect(agentsTab).toHaveAttribute('aria-selected', 'true')
+    // Tasks is the default/first tab
+    const tasksTab = screen.getByRole('tab', { name: /^Tasks/ })
+    expect(tasksTab).toHaveAttribute('aria-selected', 'true')
 
     const feedTab = screen.getByRole('tab', { name: 'Feed' })
     expect(feedTab).toHaveAttribute('aria-selected', 'false')
@@ -233,28 +245,10 @@ describe('Accessibility', () => {
     }
   })
 
-  it('speech bubble wrapper has aria-hidden', async () => {
-    const { container } = await renderApp()
-    // Select an agent to show speech bubble
-    const forgeButtons = screen.getAllByText('Forge')
-    const rosterButton = forgeButtons.find(el => el.closest('.roster-card'))
-    if (rosterButton) fireEvent.click(rosterButton)
-
-    // The speech bubble's parent div should be aria-hidden
-    const speechBubble = container.querySelector('.speech-bubble')
-    if (speechBubble) {
-      const wrapper = speechBubble.parentElement
-      expect(wrapper).toHaveAttribute('aria-hidden', 'true')
-    }
-  })
-
   it('form inputs have associated labels', async () => {
-    // Use snapshot with agents so we can test the assignment form
     await renderApp()
-    // Select Forge first
-    const forgeButtons = screen.getAllByText('Forge')
-    const rosterButton = forgeButtons.find(el => el.closest('.roster-card'))
-    if (rosterButton) fireEvent.click(rosterButton)
+    // Select Forge via left sidebar tree
+    selectForge()
 
     const assignBtn = screen.getByText('Assign task')
     fireEvent.click(assignBtn)

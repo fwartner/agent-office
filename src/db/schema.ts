@@ -13,6 +13,11 @@ export const officeAgents = sqliteTable('office_agents', {
   characterId: text('character_id'),
   spriteSheet: text('sprite_sheet'),
   systemPrompt: text('system_prompt'),
+  runtimeMaxTurns: integer('runtime_max_turns').default(3),
+  runtimeTimeoutSec: integer('runtime_timeout_sec').default(300),
+  runtimeWorkingDir: text('runtime_working_dir'),
+  runtimeAllowedTools: text('runtime_allowed_tools'), // JSON array stored as text
+  runtimeMode: text('runtime_mode').default('full'), // 'readonly' | 'full'
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })
@@ -88,8 +93,8 @@ export const officeDecisions = sqliteTable('office_decisions', {
 
 export const officeMessages = sqliteTable('office_messages', {
   id: text('id').primaryKey(),
-  fromAgentId: text('from_agent_id').notNull().references(() => officeAgents.id, { onDelete: 'cascade' }),
-  toAgentId: text('to_agent_id').references(() => officeAgents.id, { onDelete: 'cascade' }),
+  fromAgentId: text('from_agent_id').notNull(),
+  toAgentId: text('to_agent_id'),
   roomId: text('room_id').references(() => officeRooms.id, { onDelete: 'cascade' }),
   message: text('message').notNull(),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
@@ -110,4 +115,11 @@ export const officeWebhookLogs = sqliteTable('office_webhook_logs', {
   event: text('event').notNull(),
   statusCode: integer('status_code'),
   deliveredAt: text('delivered_at').notNull().$defaultFn(() => new Date().toISOString()),
+})
+
+export const officeIntegrations = sqliteTable('office_integrations', {
+  name: text('name').primaryKey(),  // 'slack', 'github', 'linear', 'telegram'
+  config: text('config').notNull().default('{}'),  // JSON object stored as text
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })
